@@ -1,6 +1,6 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
-import { verifyUser } from "./index";
+import { verifyUser } from "./index.js";
 
 const db = getFirestore();
 

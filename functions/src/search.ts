@@ -1,5 +1,5 @@
 import { onRequest } from "firebase-functions/v2/https";
-import { verifyUser } from "./index";
+import { verifyUser } from "./index.js";
 
 export const searchStub = onRequest(async (req, res) => {
   try {

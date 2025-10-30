@@ -1,0 +1,24 @@
+{
+  "success": true,
+  "result": {
+    "id": "inf_12345",
+    "username": "testuser",
+    "platform": "instagram",
+    "display_name": "Test User",
+    "bio": "Beauty and lifestyle content creator",
+    "profile_image_url": "https://cdninstagram.com/p/test.jpg",
+    "follower_count": 125000,
+    "following_count": 3500,
+    "post_count": 450,
+    "engagement_rate": 4.2,
+    "avg_likes": 5200,
+    "avg_comments": 180,
+    "is_verified": true,
+    "is_business_account": true,
+    "category": "beauty",
+    "location": "Los Angeles, CA",
+    "contact_email": "test@example.com",
+    "last_updated": "2024-10-30T12:00:00Z"
+  }
+}
+

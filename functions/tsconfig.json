@@ -1,17 +1,17 @@
 {
   "compilerOptions": {
-    "module": "ESNext",
-    "target": "ES2022",
-    "lib": ["ES2022"],
-    "moduleResolution": "node",
+    "target": "ES2020",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "lib",
+    "rootDir": "src",
     "esModuleInterop": true,
-    "skipLibCheck": true,
-    "strict": true,
     "resolveJsonModule": true,
-    "outDir": "./lib",
-    "rootDir": "./src"
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmitOnError": false
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "lib"]
+  "include": ["src"],
+  "exclude": ["src/__tests__", "**/*.test.ts", "**/*.spec.ts"]
 }
 

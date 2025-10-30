@@ -10,19 +10,19 @@ initializeApp();
 const db = getFirestore();
 
 // Export HTTP functions
-export { gmailSend, gmailAuthorize } from "./gmail";
-export { stripeWebhook } from "./stripe";
-export { campaignsCreate, campaignsMatch } from "./campaigns";
-export { aiDraftOutreach, chatbotStub, supportAiRouter } from "./ai";
-export { reportsGenerate } from "./reports";
-export { searchStub } from "./search";
+export { gmailSend, gmailAuthorize } from "./gmail.js";
+export { stripeWebhook } from "./stripe.js";
+export { campaignsCreate, campaignsMatch } from "./campaigns.js";
+export { aiDraftOutreach, chatbotStub, supportAiRouter } from "./ai.js";
+export { reportsGenerate } from "./reports.js";
+export { searchStub } from "./search.js";
 
 // Export scheduled functions
-export { billingMeter } from "./cron/billing-meter";
-export { refreshInfluencers } from "./cron/refresh-influencers";
+export { billingMeter } from "./cron/billing-meter.js";
+export { refreshInfluencers } from "./cron/refresh-influencers.js";
 
 // Export Pub/Sub handlers
-export { outreachSend } from "./pubsub/outreach-send";
+export { outreachSend } from "./pubsub/outreach-send.js";
 
 // Helper function to verify Firebase ID token
 export async function verifyUser(authHeader?: string) {

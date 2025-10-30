@@ -5,7 +5,9 @@
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Get the directory where this script is located, regardless of how it's invoked
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="${SCRIPT_DIR}"
 LOG_DIR="${ROOT_DIR}/logs"
 mkdir -p "${LOG_DIR}"
 
@@ -24,33 +26,69 @@ NC='\033[0m' # No Color
 setup_environment() {
     echo -e "${BLUE}🌍 Setting up environment variables...${NC}"
     
+    # Load environment variables from central env files
+    if [[ -f "${ROOT_DIR}/scripts/load-env.sh" ]]; then
+        source "${ROOT_DIR}/scripts/load-env.sh" "${PROFILE:-dev}"
+    else
+        echo -e "${YELLOW}⚠️  load-env.sh not found, using defaults${NC}"
+        export PROFILE="${PROFILE:-dev}"
+    fi
+    
     # Add bun to PATH
     export PATH="$HOME/.bun/bin:${ROOT_DIR}/node_modules/.bin:$PATH"
     
-    # Firebase Emulators
-    export FIREBASE_AUTH_EMULATOR_HOST=localhost:9001
-    export FIRESTORE_EMULATOR_HOST=localhost:9002
-    export STORAGE_EMULATOR_HOST=localhost:9003
-    export PUBSUB_EMULATOR_HOST=localhost:9005
-    export GOOGLE_CLOUD_PROJECT=demo-penny-dev
+    # Ensure PROFILE is set
+    export PROFILE="${PROFILE:-dev}"
     
-    # Service URLs
-    export SEARCH_SERVICE_URL=http://localhost:9100
-    export BRIGHTDATA_SERVICE_URL=http://localhost:9101
-    export VIEWER_SERVICE_URL=http://localhost:9102
-    export PUBLIC_SITE_URL=http://localhost:9200
-    
-    # Stripe (Load from environment or use placeholders)
-    export STRIPE_SECRET_KEY="${STRIPE_SECRET_KEY:-sk_test_YOUR_SECRET_KEY_HERE}"
-    export STRIPE_WEBHOOK_SECRET="${STRIPE_WEBHOOK_SECRET:-whsec_YOUR_WEBHOOK_SECRET_HERE}"
-    export STRIPE_TRIAL_DAYS="${STRIPE_TRIAL_DAYS:-3}"
-    export PUBLIC_STRIPE_PUBLISHABLE_KEY="${PUBLIC_STRIPE_PUBLISHABLE_KEY:-pk_test_YOUR_PUBLISHABLE_KEY_HERE}"
+    # Service URLs (can be overridden by env files)
+    export SEARCH_SERVICE_URL="${SEARCH_SERVICE_URL:-http://localhost:9100}"
+    export BRIGHTDATA_SERVICE_URL="${BRIGHTDATA_SERVICE_URL:-http://localhost:9101}"
+    export VIEWER_SERVICE_URL="${VIEWER_SERVICE_URL:-http://localhost:9102}"
+    export PUBLIC_SITE_URL="${PUBLIC_SITE_URL:-http://localhost:9200}"
     
     # Development flags
-    export PROFILE=dev
     export GMAIL_STUB=1
     
-    echo -e "${GREEN}✅ Environment configured${NC}"
+    echo -e "${GREEN}✅ Environment configured (PROFILE=${PROFILE})${NC}"
+}
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Stop all services function (defined early so it can be called from flags)
+# ═════════════════════════════════════════════════════════════════════════════
+
+stop_all_services() {
+    echo -e "${RED}🛑 Stopping all services...${NC}"
+    echo ""
+    
+    # Stop Firebase emulators
+    echo -e "${BLUE}   Stopping Firebase emulators...${NC}"
+    pkill -f "firebase.*emulators" || true
+    pkill -f "firebase-tools" || true
+    pkill -f "cloud-firestore-emulator" || true
+    pkill -f "pubsub-emulator" || true
+    pkill -f "cloud-storage-rules" || true
+    
+    # Stop Python services
+    echo -e "${BLUE}   Stopping Python services...${NC}"
+    pkill -f "uvicorn.*search" || true
+    pkill -f "uvicorn.*brightdata" || true
+    pkill -f "streamlit.*viewer" || true
+    
+    # Stop web app
+    echo -e "${BLUE}   Stopping web app...${NC}"
+    pkill -f "vite.*web" || true
+    pkill -f "svelte-kit" || true
+    
+    # Stop Redis
+    echo -e "${BLUE}   Stopping Redis...${NC}"
+    pkill -f "redis-server.*9300" || true
+    
+    # Clean up lock files
+    rm -f /tmp/hub-*.json 2>/dev/null || true
+    
+    sleep 2
+    echo ""
+    echo -e "${GREEN}✅ All services stopped${NC}"
 }
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -105,6 +143,10 @@ while [[ $# -gt 0 ]]; do
             TEST_MODE=true
             shift
             ;;
+        --stop)
+            stop_all_services
+            exit 0
+            ;;
         --help|-h)
             cat << EOF
 ${BLUE}════════════════════════════════════════════════════════════════${NC}
@@ -126,6 +168,7 @@ ${GREEN}Options:${NC}
   --redis        Start Redis server (Port 9300)
   --seed         Seed Firebase with test data
   --test         Run service tests
+  --stop         Stop all running services
   --help, -h     Show this help message
 
 ${GREEN}Examples:${NC}
@@ -214,13 +257,13 @@ wait_for_port() {
     done
     
     echo -e "${YELLOW}⚠️  Port ${port} did not become ready${NC}"
-    return 1
+        return 1
 }
 
 ensure_python_venv() {
     local service_dir="$1"
     local venv_dir="${service_dir}/venv"
-    
+
     if [[ ! -d "${venv_dir}" ]]; then
         echo -e "${BLUE}🐍 Creating Python virtual environment...${NC}"
         cd "${service_dir}"
@@ -272,12 +315,54 @@ check_prerequisites() {
 start_firebase_emulators() {
     echo -e "${CYAN}🔥 Starting Firebase Emulators...${NC}"
     
-    # Kill existing emulators
-    pkill -f "firebase.*emulators:start" || true
+    # Kill existing emulators comprehensively
+    echo -e "${BLUE}   Stopping any existing Firebase emulators...${NC}"
+    pkill -f "firebase.*emulators" || true
+    pkill -f "firebase-tools" || true
+    pkill -f "cloud-firestore-emulator" || true
+    pkill -f "pubsub-emulator" || true
+    pkill -f "cloud-storage-rules" || true
+    
+    # Clean up emulator lock files
+    rm -f /tmp/hub-*.json 2>/dev/null || true
+    
     sleep 2
     
+    # Clean up any corrupted Pub/Sub emulator downloads (incomplete downloads)
+    if [[ -d ~/.cache/firebase/emulators ]]; then
+        find ~/.cache/firebase/emulators -name "*pubsub*" -type f -size -60M -delete 2>/dev/null || true
+    fi
+    
+    # Ensure PATH includes bun and npm bin directories
+    export PATH="$HOME/.bun/bin:${ROOT_DIR}/node_modules/.bin:$PATH"
+    
+    # Find firebase command
+    FIREBASE_CMD=$(command -v firebase || echo "")
+    if [[ -z "$FIREBASE_CMD" ]]; then
+        # Try bun's bin directory
+        if [[ -f "$HOME/.bun/bin/firebase" ]]; then
+            FIREBASE_CMD="$HOME/.bun/bin/firebase"
+        elif [[ -f "${ROOT_DIR}/node_modules/.bin/firebase" ]]; then
+            FIREBASE_CMD="${ROOT_DIR}/node_modules/.bin/firebase"
+        else
+            echo -e "${RED}❌ Firebase CLI not found. Please install with: bun add -g firebase-tools${NC}"
+            return 1
+        fi
+    fi
+    
+    # Verify firebase.json exists
+    if [[ ! -f "${ROOT_DIR}/firebase.json" ]]; then
+        echo -e "${RED}❌ firebase.json not found in ${ROOT_DIR}${NC}"
+        return 1
+    fi
+    
+    # Change to root directory first (before nohup)
     cd "${ROOT_DIR}"
-    nohup firebase emulators:start --project demo-penny-dev \
+    
+    # Use full PATH in nohup command and ensure we're in the right directory
+    # Change directory in the subshell to ensure firebase.json is found
+    # Use demo-penny-dev project to skip production API calls that cause permission errors
+    nohup bash -c "cd '${ROOT_DIR}' && export PATH=\"\$HOME/.bun/bin:${ROOT_DIR}/node_modules/.bin:\$PATH\" && '${FIREBASE_CMD}' emulators:start --project demo-penny-dev" \
         > "${LOG_DIR}/firebase-emulators.log" 2>&1 &
     local pid=$!
     
@@ -285,21 +370,39 @@ start_firebase_emulators() {
     echo -e "   Logs: ${LOG_DIR}/firebase-emulators.log"
     echo -e "   UI: http://localhost:9000"
     
-    # Wait for emulators to be ready
-    sleep 5
-    wait_for_port 9002  # Firestore
+    # Wait longer for emulators to initialize (especially for first-time downloads)
+    echo -e "${BLUE}⏳ Waiting for emulators to initialize (may take 15-20 seconds on first run)...${NC}"
+    sleep 15
+    
+    # Check if process is still running
+    if ! kill -0 $pid 2>/dev/null; then
+        echo -e "${RED}❌ Firebase emulators process died. Check logs: ${LOG_DIR}/firebase-emulators.log${NC}"
+        echo -e "${YELLOW}💡 Common issues:${NC}"
+        echo -e "   - Incomplete emulator downloads (try clearing ~/.cache/firebase/emulators)"
+        echo -e "   - Permission errors (check Firebase authentication)"
+        return 1
+    fi
+    
+    # Wait for Firestore port (non-fatal check - emulators might need more time)
+    if wait_for_port 9002; then
+        echo -e "${GREEN}✅ Firestore emulator is ready${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Firestore port not responding yet (may still be initializing)${NC}"
+        echo -e "   Check status at: http://localhost:9000"
+    fi
 }
 
 start_search_service() {
     echo -e "${CYAN}🔍 Starting Search Service...${NC}"
-    
+
     local service_dir="${ROOT_DIR}/services/search"
     ensure_python_venv "${service_dir}"
     
     kill_port 9100
     
     cd "${service_dir}"
-    nohup bash -c "source venv/bin/activate && PROFILE=dev uvicorn app.main:app --reload --host 0.0.0.0 --port 9100" \
+    # Load env vars and start service with PROFILE set
+    nohup bash -c "source ${ROOT_DIR}/scripts/load-env.sh ${PROFILE:-dev} && source venv/bin/activate && PROFILE=${PROFILE:-dev} uvicorn app.main:app --reload --host 0.0.0.0 --port 9100" \
         > "${LOG_DIR}/search-service.log" 2>&1 &
     local pid=$!
     
@@ -317,7 +420,8 @@ start_brightdata_service() {
     kill_port 9101
     
     cd "${service_dir}"
-    nohup bash -c "source venv/bin/activate && PROFILE=dev uvicorn app.main:app --reload --host 0.0.0.0 --port 9101" \
+    # Load env vars and start service with PROFILE set
+    nohup bash -c "source ${ROOT_DIR}/scripts/load-env.sh ${PROFILE:-dev} && source venv/bin/activate && PROFILE=${PROFILE:-dev} uvicorn app.main:app --reload --host 0.0.0.0 --port 9101" \
         > "${LOG_DIR}/brightdata-service.log" 2>&1 &
     local pid=$!
     
@@ -335,7 +439,8 @@ start_viewer_service() {
     kill_port 9102
     
     cd "${service_dir}"
-    nohup bash -c "source venv/bin/activate && PROFILE=dev streamlit run app.py --server.port 9102" \
+    # Load env vars and start service with PROFILE set
+    nohup bash -c "source ${ROOT_DIR}/scripts/load-env.sh ${PROFILE:-dev} && source venv/bin/activate && PROFILE=${PROFILE:-dev} streamlit run app.py --server.port 9102" \
         > "${LOG_DIR}/viewer-service.log" 2>&1 &
     local pid=$!
     
@@ -357,7 +462,8 @@ start_web_app() {
         npm install
     fi
     
-    nohup npm run dev -- --port 9200 \
+    # Load env vars and start app (SvelteKit will pick up PUBLIC_* vars)
+    nohup bash -c "source ${ROOT_DIR}/scripts/load-env.sh ${PROFILE:-dev} && npm run dev -- --port 9200" \
         > "${LOG_DIR}/web-app.log" 2>&1 &
     local pid=$!
     
@@ -373,11 +479,11 @@ start_redis() {
         echo -e "${YELLOW}⚠️  Redis not found, skipping...${NC}"
         return
     fi
-    
+
     kill_port 9300
     pkill -f redis-server || true
-    sleep 1
-    
+        sleep 1
+
     nohup redis-server --port 9300 \
         > "${LOG_DIR}/redis.log" 2>&1 &
     local pid=$!
@@ -399,7 +505,7 @@ seed_test_data() {
         echo -e "${YELLOW}⚠️  Seed script not found, skipping...${NC}"
         return
     fi
-    
+
     firebase emulators:exec --project demo-penny-dev 'node scripts/seed-firestore.ts' \
         > "${LOG_DIR}/seed-data.log" 2>&1
     
@@ -459,17 +565,17 @@ main() {
     setup_environment
     check_prerequisites
     
-    echo ""
-    
+echo ""
+
     # Handle test mode
-    if [ "$TEST_MODE" = true ]; then
-        run_tests
-        exit 0
-    fi
-    
-    # Start services
-    if [ "$START_REDIS" = true ]; then
-        start_redis
+if [ "$TEST_MODE" = true ]; then
+    run_tests
+    exit 0
+fi
+
+# Start services
+if [ "$START_REDIS" = true ]; then
+    start_redis
         echo ""
     fi
     
@@ -481,19 +587,19 @@ main() {
     # Wait a bit for emulators to initialize
     if [ "$START_EMULATORS" = true ]; then
         sleep 3
-    fi
-    
-    if [ "$START_SEARCH" = true ]; then
+fi
+
+if [ "$START_SEARCH" = true ]; then
         start_search_service
         echo ""
-    fi
-    
-    if [ "$START_BRIGHTDATA" = true ]; then
+fi
+
+if [ "$START_BRIGHTDATA" = true ]; then
         start_brightdata_service
         echo ""
-    fi
-    
-    if [ "$START_VIEWER" = true ]; then
+fi
+
+if [ "$START_VIEWER" = true ]; then
         start_viewer_service
         echo ""
     fi
@@ -525,8 +631,8 @@ main() {
         echo "     • Storage:       http://localhost:9003"
         echo "     • Functions:     http://localhost:9004"
         echo "     • Pub/Sub:       http://localhost:9005"
-    fi
-    
+fi
+
     if [ "$START_SEARCH" = true ] || [ "$START_BRIGHTDATA" = true ] || \
        [ "$START_VIEWER" = true ] || [ "$START_WEB" = true ] || [ "$START_REDIS" = true ]; then
         echo ""
@@ -539,16 +645,16 @@ main() {
         fi
         if [ "$START_VIEWER" = true ]; then
             echo "     • Viewer:          http://localhost:9102"
-        fi
+    fi
         if [ "$START_WEB" = true ]; then
             echo "     • Web App:         http://localhost:9200"
         fi
         if [ "$START_REDIS" = true ]; then
             echo "     • Redis:           localhost:9300"
         fi
-    fi
-    
-    echo ""
+fi
+
+echo ""
     echo -e "${CYAN}💳 Stripe Testing:${NC}"
     echo "   Run: stripe listen --forward-to localhost:9004/demo-penny-dev/us-central1/stripeWebhook"
     echo ""
@@ -556,10 +662,10 @@ main() {
     echo "   Run: ./startup.sh --seed"
     echo ""
     echo -e "${CYAN}📋 Logs:${NC} ${LOG_DIR}/"
-    echo ""
+echo ""
     echo -e "${YELLOW}💡 Start backend services: ./startup.sh --search --brightdata${NC}"
-    echo -e "${YELLOW}💡 Stop all: pkill -f 'firebase|uvicorn|streamlit'${NC}"
-    echo ""
+    echo -e "${YELLOW}💡 Stop all services: ./startup.sh --stop${NC}"
+echo ""
 }
 
 # Run main function

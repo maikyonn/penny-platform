@@ -1,7 +1,4 @@
 {
-  "projects": {
-    "default": "penny-dev"
-  },
   "hosting": [
     {
       "site": "penny-web",
@@ -46,9 +43,6 @@
     },
     "storage": {
       "port": 9003
-    },
-    "pubsub": {
-      "port": 9005
     },
     "hosting": {
       "port": 9200
