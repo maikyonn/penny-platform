@@ -1,0 +1,23 @@
+{
+  "records": [
+    {
+      "profile_url": "https://instagram.com/alice",
+      "account": "alice",
+      "username": "alice",
+      "followers": 10400,
+      "biography": "Skincare nerd. Ingredient-focused reviews.",
+      "profile_image_url": "https://images.example.com/alice.jpg",
+      "business_category_name": "Beauty",
+      "warning": "",
+      "warning_code": "",
+      "posts": [
+        {
+          "caption": "Reviewing my favorite cleansers today!",
+          "image_url": "https://images.example.com/posts/alice1.jpg",
+          "like_count": 1200,
+          "comment_count": 45
+        }
+      ]
+    }
+  ]
+}

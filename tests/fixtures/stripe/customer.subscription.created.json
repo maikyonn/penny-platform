@@ -1,0 +1,39 @@
+{
+  "id": "evt_test_subscription_created",
+  "object": "event",
+  "api_version": "2024-12-18.acacia",
+  "created": 1640995200,
+  "data": {
+    "object": {
+      "id": "sub_test_123",
+      "object": "subscription",
+      "customer": "cus_test_123",
+      "status": "active",
+      "metadata": {
+        "orgId": "test-org-123"
+      },
+      "current_period_end": 1643673600,
+      "current_period_start": 1640995200,
+      "items": {
+        "data": [
+          {
+            "id": "si_test",
+            "price": {
+              "id": "price_test",
+              "nickname": "Pro Plan",
+              "unit_amount": 2900
+            }
+          }
+        ]
+      }
+    }
+  },
+  "livemode": false,
+  "pending_webhooks": 1,
+  "request": {
+    "id": "req_test",
+    "idempotency_key": null
+  },
+  "type": "customer.subscription.created"
+}
+

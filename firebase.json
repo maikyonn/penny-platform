@@ -1,0 +1,73 @@
+{
+  "projects": {
+    "default": "penny-dev"
+  },
+  "hosting": [
+    {
+      "site": "penny-web",
+      "public": "apps/web/build",
+      "cleanUrls": true,
+      "ignore": [
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "/api/**",
+          "function": "api"
+        },
+        {
+          "source": "/stripe/**",
+          "function": "stripeWebhook"
+        },
+        {
+          "source": "**",
+          "run": {
+            "serviceId": "web-ssr",
+            "region": "us-central1"
+          }
+        }
+      ]
+    }
+  ],
+  "emulators": {
+    "ui": {
+      "enabled": true,
+      "port": 9000
+    },
+    "auth": {
+      "port": 9001
+    },
+    "functions": {
+      "port": 9004
+    },
+    "firestore": {
+      "port": 9002
+    },
+    "storage": {
+      "port": 9003
+    },
+    "pubsub": {
+      "port": 9005
+    },
+    "hosting": {
+      "port": 9200
+    },
+    "singleProjectMode": true
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "runtime": "nodejs20"
+    }
+  ]
+}
+

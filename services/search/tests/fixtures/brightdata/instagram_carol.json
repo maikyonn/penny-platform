@@ -1,0 +1,23 @@
+{
+  "records": [
+    {
+      "profile_url": "https://instagram.com/carol",
+      "account": "carol",
+      "username": "carol",
+      "followers": 25000,
+      "biography": "Daily routines, gym, and recovery.",
+      "profile_image_url": "https://images.example.com/carol.jpg",
+      "business_category_name": "Lifestyle",
+      "warning": "",
+      "warning_code": "",
+      "posts": [
+        {
+          "caption": "Morning workout routine.",
+          "image_url": "https://images.example.com/posts/carol1.jpg",
+          "like_count": 900,
+          "comment_count": 30
+        }
+      ]
+    }
+  ]
+}

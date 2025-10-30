@@ -1,0 +1,51 @@
+{
+  "query": "skincare routine",
+  "search_accounts": [
+    "alice",
+    "bob_warning",
+    "carol"
+  ],
+  "rerank_accounts": [
+    "alice",
+    "bob_warning",
+    "carol"
+  ],
+  "brightdata": {
+    "success_keys": [
+      "https://instagram.com/alice",
+      "https://instagram.com/carol"
+    ],
+    "follower_counts": {
+      "alice": 10400,
+      "bob_warning": 8200,
+      "carol": 25000
+    }
+  },
+  "llm_scores": {
+    "alice": 5,
+    "bob_warning": 5,
+    "carol": 5
+  },
+  "pipeline": {
+    "final_accounts": [
+      "alice",
+      "carol"
+    ],
+    "events": [
+      "SEARCH_STARTED",
+      "SEARCH_COMPLETED",
+      "RERANK_STARTED",
+      "RERANK_COMPLETED",
+      "BRIGHTDATA_STARTED",
+      "BRIGHTDATA_PROFILE_COMPLETED",
+      "BRIGHTDATA_PROFILE_COMPLETED",
+      "BRIGHTDATA_PROFILE_FAILED",
+      "BRIGHTDATA_COMPLETED",
+      "BRIGHTDATA_FILTERED",
+      "LLM_FIT_STARTED",
+      "LLM_FIT_PROGRESS",
+      "LLM_FIT_PROGRESS",
+      "LLM_FIT_COMPLETED"
+    ]
+  }
+}

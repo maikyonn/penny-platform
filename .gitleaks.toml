@@ -1,0 +1,53 @@
+title = "DIME AI Gitleaks Configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allowlist for known safe patterns"
+paths = [
+  '''\.env\.example$''',
+  '''\.env\.dev$''',
+  '''\.env\.test$''',
+  '''\.env\.ci$''',
+  '''README\.md$''',
+  '''docs/''',
+]
+
+[[rules]]
+id = "generic-api-key"
+description = "Generic API Key"
+regex = '''(?i)(api[_-]?key|apikey)\s*[=:]\s*['"]?([a-z0-9]{32,})['"]?'''
+tags = ["key", "api"]
+entropy = 3.5
+
+[[rules]]
+id = "openai-api-key"
+description = "OpenAI API Key"
+regex = '''sk-[a-zA-Z0-9]{32,}'''
+tags = ["key", "openai"]
+
+[[rules]]
+id = "brightdata-api-key"
+description = "BrightData API Key"
+regex = '''bd_[a-zA-Z0-9]{32,}'''
+tags = ["key", "brightdata"]
+
+[[rules]]
+id = "stripe-secret-key"
+description = "Stripe Secret Key"
+regex = '''sk_(live|test)_[a-zA-Z0-9]{24,}'''
+tags = ["key", "stripe"]
+
+[[rules]]
+id = "stripe-webhook-secret"
+description = "Stripe Webhook Secret"
+regex = '''whsec_[a-zA-Z0-9]{32,}'''
+tags = ["key", "stripe"]
+
+[[rules]]
+id = "firebase-credentials"
+description = "Firebase Service Account JSON"
+regex = '''"type"\s*:\s*"service_account"'''
+tags = ["credentials", "firebase"]
+

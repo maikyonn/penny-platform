@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Penny Search Pipeline Tester</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body {
+      margin: 0;
+      padding: 2rem;
+      background: #0f1115;
+      color: #f3f6ff;
+    }
+    h1, h2 {
+      margin-top: 0;
+    }
+    .card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+    }
+    input, select, textarea, button {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 0.6rem 0.75rem;
+      margin-bottom: 1rem;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.05);
+      color: inherit;
+      font-size: 0.95rem;
+    }
+    textarea {
+      min-height: 140px;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    }
+    button {
+      cursor: pointer;
+      border: none;
+      background: linear-gradient(135deg, #38bdf8, #6366f1);
+      font-weight: 600;
+      transition: transform 0.2s ease, opacity 0.2s ease;
+    }
+    button:hover {
+      transform: translateY(-1px);
+      opacity: 0.95;
+    }
+    .row {
+      display: grid;
+      gap: 1rem;
+    }
+    @media (min-width: 900px) {
+      .row {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    pre {
+      background: rgba(15, 23, 42, 0.8);
+      padding: 1rem;
+      border-radius: 10px;
+      overflow: auto;
+      font-size: 0.85rem;
+      line-height: 1.4;
+    }
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+    .muted {
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Penny Search – Stage Tester</h1>
+  <div class="card">
+    <label for="baseUrl">Base URL</label>
+    <input id="baseUrl" type="text" value="http://localhost:7001/search" />
+    <small class="muted">All requests will be sent to this root (e.g., <code>/</code>, <code>/pipeline/brightdata</code>).</small>
+  </div>
+
+  <div class="row">
+    <section class="card">
+      <h2>1. Search Creators</h2>
+      <form id="searchForm">
+        <label for="query">Query</label>
+        <input id="query" name="query" value="beauty skincare" required />
+
+        <label for="method">Method</label>
+        <select id="method" name="method">
+          <option value="hybrid">hybrid</option>
+          <option value="semantic">semantic</option>
+          <option value="lexical">lexical</option>
+        </select>
+
+        <label for="limit">Limit</label>
+        <input id="limit" type="number" name="limit" value="20" min="1" max="500" />
+
+        <button type="submit">Run Search</button>
+      </form>
+      <button id="copySearchResults" type="button">Use Results for Next Stage</button>
+    </section>
+
+    <section class="card">
+      <h2>2. BrightData Stage</h2>
+      <form id="brightdataForm">
+        <label for="brightdataProfiles">Profiles JSON</label>
+        <textarea id="brightdataProfiles" name="profiles" placeholder="[]"></textarea>
+
+        <label for="brightdataLimit">Max Profiles (optional)</label>
+        <input id="brightdataLimit" type="number" min="1" name="max_profiles" />
+
+        <button type="submit">Run BrightData Refresh</button>
+      </form>
+      <button id="copyBrightdataResults" type="button">Use BrightData Output</button>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>3. LLM Stage</h2>
+    <form id="llmForm">
+      <label for="llmProfiles">Profiles JSON</label>
+      <textarea id="llmProfiles" name="profiles" placeholder="[]"></textarea>
+
+      <label for="businessQuery">Business Fit Query</label>
+      <input id="businessQuery" name="business_fit_query" value="Eco-friendly skincare brand seeking Gen Z creators" required />
+
+      <label for="llmLimit">Max Profiles</label>
+      <input id="llmLimit" type="number" min="1" name="max_profiles" />
+
+      <label>
+        <input id="useBrightdata" type="checkbox" name="use_brightdata" />
+        Use BrightData within LLM stage
+      </label>
+
+      <button type="submit">Run LLM Fit</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <div class="result-header">
+      <h2>Response</h2>
+      <span class="muted" id="statusLabel">Awaiting request…</span>
+    </div>
+    <pre id="output">{}</pre>
+  </section>
+
+  <section class="card">
+    <h2>Job Inspector</h2>
+    <form id="jobForm">
+      <label for="jobId">Job ID</label>
+      <input id="jobId" name="job_id" placeholder="rq:job:..." required />
+      <button type="submit">Fetch Job Status</button>
+    </form>
+    <small class="muted">SSE stream: <code id="jobSse">n/a</code></small>
+  </section>
+
+  <script>
+    const state = {
+      latestResults: null,
+      lastResponse: null,
+    };
+
+    const baseInput = document.getElementById('baseUrl');
+    const outputEl = document.getElementById('output');
+    const statusEl = document.getElementById('statusLabel');
+    const searchForm = document.getElementById('searchForm');
+    const brightdataForm = document.getElementById('brightdataForm');
+    const llmForm = document.getElementById('llmForm');
+    const jobForm = document.getElementById('jobForm');
+    const jobIdInput = document.getElementById('jobId');
+    const jobSseEl = document.getElementById('jobSse');
+
+    function setOutput(status, data) {
+      statusEl.textContent = status;
+      outputEl.textContent = JSON.stringify(data, null, 2);
+      state.lastResponse = data;
+      if (data && Array.isArray(data.results)) {
+        state.latestResults = data.results;
+      }
+    }
+
+    function getBase() {
+      return baseInput.value.replace(/\/$/, '');
+    }
+
+    async function callApi(path, payload) {
+      const base = getBase();
+      const url = `${base}${path}`;
+      statusEl.textContent = `Calling ${url}…`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`${response.status} ${response.statusText}: ${text}`);
+      }
+      return response.json();
+    }
+
+    searchForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const payload = {
+        query: event.target.query.value.trim(),
+        method: event.target.method.value,
+        limit: Number(event.target.limit.value) || 20,
+      };
+      try {
+        const data = await callApi('/', payload);
+        setOutput('Search job queued', data);
+        if (data.job_id) {
+          jobIdInput.value = data.job_id;
+          jobSseEl.textContent = `${getBase()}/job/${data.job_id}/stream`;
+        }
+      } catch (error) {
+        setOutput('Search error', { error: error.message });
+      }
+    });
+
+    brightdataForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      let profiles;
+      try {
+        profiles = JSON.parse(event.target.profiles.value || '[]');
+      } catch {
+        setOutput('BrightData error', { error: 'Profiles JSON invalid' });
+        return;
+      }
+      const payload = {
+        profiles,
+        max_profiles: event.target.max_profiles.value ? Number(event.target.max_profiles.value) : undefined,
+      };
+      try {
+        const data = await callApi('/pipeline/brightdata', payload);
+        setOutput('BrightData job queued', data);
+        if (data.job_id) {
+          jobIdInput.value = data.job_id;
+          jobSseEl.textContent = `${getBase()}/job/${data.job_id}/stream`;
+        }
+      } catch (error) {
+        setOutput('BrightData error', { error: error.message });
+      }
+    });
+
+    llmForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      let profiles;
+      try {
+        profiles = JSON.parse(event.target.profiles.value || '[]');
+      } catch {
+        setOutput('LLM error', { error: 'Profiles JSON invalid' });
+        return;
+      }
+      const payload = {
+        profiles,
+        business_fit_query: event.target.business_fit_query.value.trim(),
+        max_profiles: event.target.max_profiles.value ? Number(event.target.max_profiles.value) : undefined,
+        use_brightdata: event.target.use_brightdata.checked,
+      };
+      try {
+        const data = await callApi('/pipeline/llm', payload);
+        setOutput('LLM job queued', data);
+        if (data.job_id) {
+          jobIdInput.value = data.job_id;
+          jobSseEl.textContent = `${getBase()}/job/${data.job_id}/stream`;
+        }
+      } catch (error) {
+        setOutput('LLM error', { error: error.message });
+      }
+    });
+
+    document.getElementById('copySearchResults').addEventListener('click', () => {
+      if (!state.latestResults) {
+        alert('Run a search first.');
+        return;
+      }
+      const serialized = JSON.stringify(state.latestResults, null, 2);
+      document.getElementById('brightdataProfiles').value = serialized;
+    });
+
+    document.getElementById('copyBrightdataResults').addEventListener('click', () => {
+      if (!state.lastResponse || !Array.isArray(state.lastResponse.results)) {
+        alert('No BrightData response available.');
+        return;
+      }
+      document.getElementById('llmProfiles').value = JSON.stringify(state.lastResponse.results, null, 2);
+    });
+
+    jobForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const jobId = jobIdInput.value.trim();
+      if (!jobId) return;
+      try {
+        const url = `${getBase()}/job/${jobId}`;
+        statusEl.textContent = `Fetching ${url}…`;
+        const response = await fetch(url, { method: 'GET' });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(`${response.status} ${response.statusText}: ${text}`);
+        }
+        const data = await response.json();
+        setOutput(`Job ${jobId} status`, data);
+        jobSseEl.textContent = `${getBase()}/job/${jobId}/stream`;
+      } catch (error) {
+        setOutput('Job status error', { error: error.message });
+      }
+    });
+  </script>
+</body>
+</html>

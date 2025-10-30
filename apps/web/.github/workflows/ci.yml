@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      docker:
+        image: docker:27.2.0-dind
+        options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: 1.2.22
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            node_modules
+            supabase/.branches
+          key: ${{ runner.os }}-npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install dependencies
+        env:
+          BUN_INSTALL_CACHE_DIR: ${{ github.workspace }}/.bun-cache
+        run: bun install
+
+      - name: Start Supabase stack
+        run: |
+          supabase start
+          supabase status -o env >> $GITHUB_ENV
+
+      - name: Seed database
+        run: supabase db reset
+
+      - name: Run unit and integration tests
+        env:
+          STRIPE_SECRET_KEY: sk_test_123
+          STRIPE_WEBHOOK_SECRET: whsec_test_123
+          PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_123
+          PUBLIC_SITE_URL: http://127.0.0.1:5173
+          PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          PUBLIC_SUPABASE_ANON_KEY: ${{ env.ANON_KEY }}
+          SUPABASE_URL: http://127.0.0.1:54321
+          SUPABASE_ANON_KEY: ${{ env.ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ env.SERVICE_ROLE_KEY }}
+        run: bun run test:integration
+
+      - name: Build and preview app
+        run: |
+          bun run build
+          nohup bun run preview -- --host --port 5173 >/tmp/preview.log 2>&1 &
+          for i in {1..60}; do
+            curl -sf http://127.0.0.1:5173 && break
+            sleep 1
+          done
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Wait for Mailpit
+        run: |
+          for i in {1..60}; do
+            curl -sf http://127.0.0.1:54324/api/v1/info && break
+            sleep 1
+          done
+
+      - name: Run e2e tests
+        env:
+          E2E_BASE_URL: http://127.0.0.1:5173
+          MAILPIT_BASE_URL: http://127.0.0.1:54324
+        run: bun run test:e2e
+
+      - name: Run database RLS tests
+        run: bun run test:db

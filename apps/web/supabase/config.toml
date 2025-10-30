@@ -1,0 +1,40 @@
+project_id = "penny-platform"
+
+[auth]
+site_url = "http://localhost:5193"
+additional_redirect_urls = ["http://127.0.0.1:5193", "http://localhost:5193"]
+
+[functions]
+
+[functions.campaigns-create]
+verify_jwt = true
+
+[functions.campaigns-match]
+verify_jwt = true
+
+[functions.chatbot-stub]
+verify_jwt = true
+
+[functions.ai-draft-outreach]
+verify_jwt = true
+
+[functions.gmail-send]
+verify_jwt = true
+
+[functions.search-stub]
+verify_jwt = false
+
+[functions.outreach-send]
+verify_jwt = true
+
+[functions.reports-generate]
+verify_jwt = true
+
+[functions.support-ai-router]
+verify_jwt = true
+
+[functions.cron-refresh-influencers]
+verify_jwt = false
+
+[functions.cron-billing-meter]
+verify_jwt = false

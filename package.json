@@ -1,0 +1,42 @@
+{
+  "name": "dime-ai-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:emulators": "firebase emulators:start --project penny-dev",
+    "dev:functions": "cd functions && bun run build && firebase emulators:exec --only functions 'bun run dev'",
+    "dev:search": "cd services/search && PROFILE=dev uvicorn app.main:app --reload --host 0.0.0.0 --port 9100",
+    "dev:brightdata": "cd services/brightdata && PROFILE=dev uvicorn app.main:app --reload --host 0.0.0.0 --port 9101",
+    "dev:viewer": "cd services/viewer && PROFILE=dev streamlit run app.py --server.port 9102",
+    "dev": "concurrently -n EMU,SRCH,BD,VIEW -c yellow,green,blue,cyan \"npm run dev:emulators\" \"npm run dev:search\" \"npm run dev:brightdata\" \"npm run dev:viewer\"",
+    "seed": "firebase emulators:exec --project penny-dev 'node scripts/seed-firestore.ts'",
+    "seed:import": "firebase emulators:import ./firebase-export",
+    "seed:export": "firebase emulators:export ./firebase-export",
+    "env:print": "PROFILE=${PROFILE:-dev} node scripts/env/print.ts",
+    "env:check": "PROFILE=${PROFILE:-dev} node scripts/env/check.ts",
+    "test": "PROFILE=test bun run test:search && bun run test:brightdata",
+    "test:search": "cd services/search && PROFILE=test pytest",
+    "test:brightdata": "cd services/brightdata && PROFILE=test pytest",
+    "test:functions": "cd functions && bun test",
+    "test:auth": "./scripts/test-auth-all.sh",
+    "test:all": "./scripts/run-all-tests.sh",
+    "test:stripe": "./scripts/test-stripe-webhook.sh",
+    "setup:stripe": "./scripts/setup-stripe-local.sh",
+    "deploy:firestore": "firebase deploy --only firestore",
+    "deploy:functions": "firebase deploy --only functions",
+    "deploy:storage": "firebase deploy --only storage",
+    "deploy:hosting": "firebase deploy --only hosting"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "dotenv-flow": "^4.1.0",
+    "firebase-admin": "^12.0.0",
+    "firebase-tools": "^14.22.0",
+    "zod": "^3.22.4"
+  },
+  "workspaces": [
+    "packages/*",
+    "functions"
+  ]
+}

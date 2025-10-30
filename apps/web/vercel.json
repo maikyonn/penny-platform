@@ -1,0 +1,9 @@
+{
+	"buildCommand": "bun run build",
+	"installCommand": "bun install",
+	"build": {
+		"env": {
+			"LIGHTNINGCSS_IGNORE_NATIVE": "1"
+		}
+	}
+}

@@ -1,0 +1,19 @@
+@import 'tailwindcss';
+@source './src/**/*.{svelte,ts,js}';
+@source './src/**/*.{html,md}';
+@source not './typesense/**';
+@source not './**/*.parquet';
+@plugin "@tailwindcss/forms";
+@plugin "@tailwindcss/typography";
+
+html,
+body {
+	height: 100%;
+	margin: 0;
+	padding: 0;
+}
+
+#root,
+body > div {
+	height: 100%;
+}

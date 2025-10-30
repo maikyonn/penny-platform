@@ -1,0 +1,31 @@
+{
+  "id": "evt_test_checkout_completed",
+  "object": "event",
+  "api_version": "2024-12-18.acacia",
+  "created": 1640995200,
+  "data": {
+    "object": {
+      "id": "cs_test_123",
+      "object": "checkout.session",
+      "customer": "cus_test_123",
+      "subscription": "sub_test_123",
+      "mode": "subscription",
+      "status": "complete",
+      "metadata": {
+        "orgId": "test-org-123",
+        "plan": "pro"
+      },
+      "expires_at": 1641081600,
+      "amount_total": 2900,
+      "currency": "usd"
+    }
+  },
+  "livemode": false,
+  "pending_webhooks": 1,
+  "request": {
+    "id": "req_test",
+    "idempotency_key": null
+  },
+  "type": "checkout.session.completed"
+}
+
