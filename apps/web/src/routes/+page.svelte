@@ -13,7 +13,7 @@
 	let { data } = $props();
 </script>
 
-<Navbar session={data.session} profile={data.profile} />
+<Navbar firebaseUser={data.firebaseUser} profile={data.profile} />
 <Hero />
 <TrustedBrands />
 <InfluencerPower />

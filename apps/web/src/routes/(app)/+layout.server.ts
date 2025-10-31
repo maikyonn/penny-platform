@@ -1,16 +1,16 @@
-import { redirect } from '@sveltejs/kit';
-import { loadUserContext } from '$lib/server/user-context';
-import type { LayoutServerLoad } from './$types';
+import { redirect } from "@sveltejs/kit";
+import { loadUserContext } from "$lib/server/user-context";
+import type { LayoutServerLoad } from "./$types";
 
 export const load: LayoutServerLoad = async ({ locals }) => {
-	const { session, profile } = await loadUserContext(locals);
+	const { firebaseUser, profile } = await loadUserContext(locals);
 
-	if (!session) {
+	if (!firebaseUser) {
 		throw redirect(303, '/sign-in');
 	}
 
 	return {
-		session,
-		profile
+		firebaseUser,
+		profile,
 	};
 };

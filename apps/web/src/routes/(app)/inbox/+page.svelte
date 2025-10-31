@@ -143,8 +143,8 @@
 								{messageError}
 							</div>
 						{/if}
-						<form method="POST" action="?/sendMessage" class="space-y-3">
-							<input type="hidden" name="campaign_influencer_id" value={selectedThread.campaign_influencer_id}>
+		<form method="POST" action="?/sendMessage" class="space-y-3">
+			<input type="hidden" name="thread_id" value={selectedThread.id}>
 							<input type="hidden" name="channel" value={selectedThread.channel}>
 							<textarea
 								rows="3"

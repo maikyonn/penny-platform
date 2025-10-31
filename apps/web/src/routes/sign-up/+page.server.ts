@@ -1,5 +1,6 @@
-import { fail, redirect } from '@sveltejs/kit';
-import type { Actions, PageServerLoad } from './$types';
+import { fail, redirect } from "@sveltejs/kit";
+import { signUpWithEmailAndPassword, sendEmailVerification } from "$lib/server/firebase-identity";
+import type { Actions, PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const session = await locals.getSession();
@@ -38,11 +39,17 @@ export const actions: Actions = {
 			});
 		}
 
-		const { error } = await locals.supabase.auth.signUp({ email, password });
-
-		if (error) {
+		try {
+			const result = await signUpWithEmailAndPassword(email, password);
+			await locals.createSession(result.idToken);
+			try {
+				await sendEmailVerification(result.idToken);
+			} catch (verificationError) {
+				console.warn('[sign-up] email verification failed', verificationError);
+			}
+		} catch (error) {
 			return fail(400, {
-				error: error.message,
+				error: error instanceof Error ? error.message : 'Unable to create account.',
 				values: { email },
 			});
 		}

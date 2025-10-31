@@ -1,22 +1,37 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '$lib/database.types';
+import type { Firestore } from "firebase-admin/firestore";
 
-export type SubscriptionRow = Database['public']['Tables']['subscriptions']['Row'];
+export type SubscriptionInfo = {
+  type: string;
+  status: string;
+  productId?: string | null;
+  priceId?: string | null;
+  customerId?: string | null;
+  currentPeriodEnd?: string | null;
+};
 
 export async function getUserSubscription(
-	client: SupabaseClient<any>,
-	userId: string
-): Promise<SubscriptionRow | null> {
-	const { data, error } = await client
-		.from('subscriptions')
-		.select('*')
-		.eq('user_id', userId)
-		.maybeSingle();
-
-	if (error) {
-		console.error('[billing] subscription fetch failed', error);
-		return null;
-	}
-
-	return data ?? null;
+  firestore: Firestore,
+  userId: string,
+): Promise<SubscriptionInfo | null> {
+  try {
+    const doc = await firestore.collection("users").doc(userId).get();
+    if (!doc.exists) {
+      return null;
+    }
+    const data = doc.data() ?? {};
+    const plan = data.plan as SubscriptionInfo | undefined;
+    if (!plan) {
+      return null;
+    }
+    return {
+      ...plan,
+      customerId: plan.customerId ?? data.stripeCustomerId ?? null,
+      currentPeriodEnd: data.planCurrentPeriodEnd instanceof Date
+        ? data.planCurrentPeriodEnd.toISOString()
+        : (data.planCurrentPeriodEnd as string | null | undefined) ?? null,
+    };
+  } catch (error) {
+    console.error("[billing] subscription fetch failed", error);
+    return null;
+  }
 }

@@ -1,200 +1,309 @@
-import { error, fail, redirect } from '@sveltejs/kit';
-import { loadUserContext } from '$lib/server/user-context';
-import { seedMockInfluencersForCampaign } from '$lib/server/mock-influencers';
-import type { Database } from '$lib/database.types';
-import type { Actions, PageServerLoad } from './$types';
+import { error, fail, redirect } from "@sveltejs/kit";
+import { Timestamp } from "firebase-admin/firestore";
+import { loadUserContext } from "$lib/server/user-context";
+import { seedMockInfluencersForCampaign } from "$lib/server/mock-influencers";
+import type { Actions, PageServerLoad } from "./$types";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
-type CampaignRow = Database['public']['Tables']['campaigns']['Row'];
-type CampaignTargetRow = Database['public']['Tables']['campaign_targets']['Row'];
-type InfluencerRow = Database['public']['Tables']['influencers']['Row'];
-type CampaignInfluencerRow = Pick<
-	Database['public']['Tables']['campaign_influencers']['Row'],
-	'id' | 'status' | 'source' | 'match_score' | 'last_message_at'
-> & {
-	influencers: Array<
-		Pick<
-			InfluencerRow,
-			'id' | 'display_name' | 'handle' | 'platform' | 'follower_count' | 'engagement_rate' | 'location'
-		>
-	> | null;
-};
-type OutreachThreadRow = Database['public']['Tables']['outreach_threads']['Row'];
-type OutreachMessageRow = Database['public']['Tables']['outreach_messages']['Row'];
-type CampaignMetricRow = Database['public']['Tables']['campaign_metrics']['Row'];
+function toIso(value: unknown): string | null {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Timestamp) return value.toDate().toISOString();
+  return null;
+}
+
+function directionFromMessage(direction: string | undefined) {
+  if (direction === "outgoing") return "brand";
+  if (direction === "incoming") return "influencer";
+  return "brand";
+}
 
 export const load: PageServerLoad = async ({ locals, params }) => {
-	const { session } = await loadUserContext(locals);
-	if (!session) {
-		throw redirect(303, '/sign-in');
-	}
+  const { firebaseUser, profile } = await loadUserContext(locals);
+  if (!firebaseUser) {
+    throw redirect(303, "/sign-in");
+  }
 
-	const campaignId = params.id;
+  const campaignId = params.id;
+  const firestore = locals.firestore;
+  const campaignRef = firestore.collection("outreach_campaigns").doc(campaignId);
+  const campaignSnap = await campaignRef.get();
 
-	const { data: campaignData, error: campaignError } = await locals.supabase
-		.from('campaigns')
-		.select('id, name, status, objective, budget_cents, currency, landing_page_url, start_date, end_date, created_at, updated_at, created_by')
-		.eq('id', campaignId)
-		.maybeSingle();
+  if (!campaignSnap.exists) {
+    throw error(404, "Campaign not found");
+  }
 
-	const campaign = campaignData as CampaignRow | null;
+  const campaignData = campaignSnap.data() ?? {};
+  if (campaignData.ownerUid !== firebaseUser.uid) {
+    throw error(403, "Forbidden");
+  }
 
-	if (campaignError) {
-		console.error('[campaign detail] campaignError', campaignError);
-	}
+  const campaign = {
+    id: campaignSnap.id,
+    name: (campaignData.name as string) ?? "Untitled campaign",
+    status: (campaignData.status as string) ?? "draft",
+    objective: (campaignData.description as string) ?? null,
+    budget_cents: (campaignData.budgetCents as number) ?? null,
+    currency: (campaignData.currency as string) ?? "USD",
+    landing_page_url: (campaignData.landingPageUrl as string) ?? null,
+    start_date: toIso(campaignData.schedule?.startAt),
+    end_date: toIso(campaignData.schedule?.endAt),
+    created_at: toIso(campaignData.createdAt) ?? new Date().toISOString(),
+    updated_at: toIso(campaignData.updatedAt) ?? new Date().toISOString(),
+    created_by: campaignData.ownerUid as string,
+  };
 
-	if (!campaign) {
-		throw error(404, 'Campaign not found');
-	}
+  const targetsSnapshot = await campaignRef.collection("targets").get();
+  let targets = targetsSnapshot.docs.map((doc) => ({
+    id: doc.id,
+    platforms: (doc.data().platforms as string[] | undefined) ?? [],
+    interests: (doc.data().interests as string[] | undefined) ?? [],
+    geos: (doc.data().geos as string[] | undefined) ?? [],
+    audience: (doc.data().audience as Record<string, unknown> | undefined) ?? {},
+    status: (doc.data().status as string | undefined) ?? "prospect",
+    influencerId: (doc.data().influencerId as string | undefined) ?? doc.id,
+    matchScore: (doc.data().matchScore as number | undefined) ?? null,
+    source: (doc.data().source as string | undefined) ?? "manual",
+  }));
 
-	if (campaign.created_by !== session.user.id) {
-		throw error(403, 'Forbidden');
-	}
+  if (!targets.length) {
+    await seedMockInfluencersForCampaign(campaignId, { db: firestore });
+    const refreshedTargets = await campaignRef.collection("targets").get();
+    targets = refreshedTargets.docs.map((doc) => ({
+      id: doc.id,
+      platforms: (doc.data().platforms as string[] | undefined) ?? [],
+      interests: (doc.data().interests as string[] | undefined) ?? [],
+      geos: (doc.data().geos as string[] | undefined) ?? [],
+      audience: (doc.data().audience as Record<string, unknown> | undefined) ?? {},
+      status: (doc.data().status as string | undefined) ?? "prospect",
+      influencerId: (doc.data().influencerId as string | undefined) ?? doc.id,
+      matchScore: (doc.data().matchScore as number | undefined) ?? null,
+      source: (doc.data().source as string | undefined) ?? "manual",
+    }));
+  }
 
-	const targetsPromise = locals.supabase
-		.from('campaign_targets')
-		.select('id, platforms, interests, geos, audience')
-		.eq('campaign_id', campaign.id);
+  const influencerIds = Array.from(new Set(targets.map((target) => target.influencerId).filter(Boolean))) as string[];
+  const influencerMap = new Map<string, { id: string; display_name: string | null; handle: string | null; platform: string | null; follower_count: number | null; engagement_rate: number | null; location: string | null }>();
 
-	const fetchAssignments = () =>
-		locals.supabase
-			.from('campaign_influencers')
-			.select('id, status, source, match_score, last_message_at, influencers(id, display_name, handle, platform, follower_count, engagement_rate, location)')
-			.eq('campaign_id', campaign.id)
-			.order('created_at', { ascending: false });
+  await Promise.all(
+    influencerIds.map(async (influencerId) => {
+      try {
+        const snap = await firestore.collection("influencers").doc(influencerId).get();
+        if (snap.exists) {
+          const data = snap.data() ?? {};
+          influencerMap.set(influencerId, {
+            id: snap.id,
+            display_name: (data.displayName as string) ?? null,
+            handle: (data.handle as string) ?? null,
+            platform: (data.platform as string) ?? null,
+            follower_count: (data.followerCount as number) ?? null,
+            engagement_rate: (data.engagementRate as number) ?? null,
+            location: (data.location as string) ?? null,
+          });
+        }
+      } catch (fetchError) {
+        console.warn("[campaign detail] failed to load influencer", influencerId, fetchError);
+      }
+    }),
+  );
 
-	let { data: assignmentData } = await fetchAssignments();
-	let assignmentList = (assignmentData ?? []) as CampaignInfluencerRow[];
+  const threadsSnapshot = await firestore
+    .collection("threads")
+    .where("userId", "==", firebaseUser.uid)
+    .where("campaignId", "==", campaignId)
+    .get();
 
-	if (!assignmentList.length) {
-		try {
-			await seedMockInfluencersForCampaign(campaign.id, 6);
-			const { data: refreshedAssignments } = await fetchAssignments();
-			assignmentList = (refreshedAssignments ?? []) as CampaignInfluencerRow[];
-		} catch (seedError) {
-			console.error('[campaign detail] mock influencer seed error', seedError);
-		}
-	}
+  const threadMessages = new Map<string, Array<{ direction: string; body: string; sent_at: string }>>();
+  const threadMeta = new Map<string, { id: string; channel: string; last_message_at: string | null; messagesCount: number }>();
 
-	const { data: targetsData } = await targetsPromise;
-	const targets = (targetsData ?? []) as CampaignTargetRow[];
+  await Promise.all(
+    threadsSnapshot.docs.map(async (doc) => {
+      const data = doc.data() ?? {};
+      const influencerId = (data.influencerId as string | undefined) ?? "";
+      const messagesSnapshot = await doc.ref.collection("messages").orderBy("sentAt").get();
+      const messages = messagesSnapshot.docs.map((messageDoc) => {
+        const messageData = messageDoc.data() ?? {};
+        return {
+          direction: directionFromMessage(messageData.direction as string | undefined),
+          body: (messageData.bodyText as string) ?? (messageData.bodyHtml as string) ?? "",
+          sent_at: toIso(messageData.sentAt) ?? new Date().toISOString(),
+        };
+      });
+      threadMessages.set(influencerId, messages);
+      threadMeta.set(influencerId, {
+        id: doc.id,
+        channel: (data.channel as string) ?? "email",
+        last_message_at: toIso(data.lastMessageAt),
+        messagesCount: (data.messagesCount as number | undefined) ?? messages.length,
+      });
+    }),
+  );
 
-	const assignmentIds = assignmentList.map((assignment) => assignment.id);
+  const assignments = targets.map((target) => {
+    const influencer = target.influencerId ? influencerMap.get(target.influencerId) ?? null : null;
+    const meta = target.influencerId ? threadMeta.get(target.influencerId) ?? null : null;
+    const messages = target.influencerId ? threadMessages.get(target.influencerId) ?? [] : [];
+    const thread = meta
+      ? {
+          id: meta.id,
+          campaign_influencer_id: target.id,
+          channel: meta.channel,
+          last_message_at: meta.last_message_at,
+          campaign_id: params.id,
+          messagesCount: meta.messagesCount,
+        }
+      : null;
 
-	const { data: threadsData } = assignmentIds.length
-		? await locals.supabase
-			.from('outreach_threads')
-			.select('id, campaign_influencer_id, channel, last_message_at')
-			.in('campaign_influencer_id', assignmentIds)
-		: { data: [] };
+    return {
+      id: target.id,
+      status: target.status,
+      source: target.source,
+      match_score: target.matchScore,
+      last_message_at: thread?.last_message_at ?? null,
+      influencer,
+      thread,
+      messages,
+    };
+  });
 
-	const threadList = (threadsData ?? []) as OutreachThreadRow[];
-	const threadIds = threadList.map((thread) => thread.id);
+  const statusSummary = assignments.reduce(
+    (acc, assignment) => {
+      acc.total += 1;
+      const key = assignment.status as keyof typeof acc.byStatus;
+      if (key in acc.byStatus) {
+        acc.byStatus[key] += 1;
+      }
+      return acc;
+    },
+    {
+      total: 0,
+      byStatus: {
+        prospect: 0,
+        invited: 0,
+        accepted: 0,
+        declined: 0,
+        in_conversation: 0,
+        contracted: 0,
+        completed: 0,
+      },
+    },
+  );
 
-	const { data: messagesData } = threadIds.length
-		? await locals.supabase
-			.from('outreach_messages')
-			.select('thread_id, direction, body, sent_at')
-			.in('thread_id', threadIds)
-			.order('sent_at')
-		: { data: [] };
-	const messages = (messagesData ?? []) as OutreachMessageRow[];
+  const since = new Date(Date.now() - THIRTY_DAYS_MS);
+  const metrics: Array<{ metric_date: string; impressions: number; clicks: number; conversions: number; spend_cents: number }> = [];
+  if (campaignData.metrics?.history) {
+    for (const entry of campaignData.metrics.history as Array<Record<string, unknown>>) {
+      const metricDate = entry.metric_date as string | undefined;
+      if (!metricDate || new Date(metricDate) < since) continue;
+      metrics.push({
+        metric_date: metricDate,
+        impressions: Number(entry.impressions ?? 0),
+        clicks: Number(entry.clicks ?? 0),
+        conversions: Number(entry.conversions ?? 0),
+        spend_cents: Number(entry.spend_cents ?? 0),
+      });
+    }
+  }
 
-	const since = new Date(Date.now() - THIRTY_DAYS_MS).toISOString();
-	const { data: metricsData } = await locals.supabase
-		.from('campaign_metrics')
-		.select('metric_date, impressions, clicks, conversions, spend_cents')
-		.eq('campaign_id', campaign.id)
-		.gte('metric_date', since)
-		.order('metric_date');
-	const metrics = (metricsData ?? []) as CampaignMetricRow[];
-
-	const influencerAssignments = assignmentList.map((assignment) => {
-		const thread = threadList.find((row) => row.campaign_influencer_id === assignment.id) ?? null;
-		const conversation = messages
-			.filter((message) => message.thread_id === thread?.id)
-			.map((message) => ({
-				direction: message.direction,
-				body: message.body,
-				sent_at: message.sent_at,
-			}));
-
-	return {
-		id: assignment.id,
-		status: assignment.status,
-		source: assignment.source,
-		match_score: assignment.match_score,
-		last_message_at: assignment.last_message_at,
-		influencer: assignment.influencers?.[0] ?? null,
-		thread,
-		messages: conversation,
-	};
-	});
-
-	const statusSummary = influencerAssignments.reduce(
-		(acc, assignment) => {
-			acc.total += 1;
-			if (assignment.status in acc.byStatus) {
-				acc.byStatus[assignment.status as keyof typeof acc.byStatus] += 1;
-			}
-			return acc;
-		},
-		{
-			total: 0,
-			byStatus: {
-				prospect: 0,
-				invited: 0,
-				accepted: 0,
-				declined: 0,
-				in_conversation: 0,
-				contracted: 0,
-				completed: 0,
-			},
-		},
-	);
-
-	return {
-		campaign,
-		targets,
-		assignments: influencerAssignments,
-		metrics,
-		statusSummary,
-	};
+  return {
+    campaign,
+    profile,
+    targets,
+    assignments,
+    metrics,
+    statusSummary,
+  };
 };
 
 export const actions: Actions = {
-	sendMessage: async ({ request, locals, params }) => {
-		const { session } = await loadUserContext(locals);
-		if (!session) {
-			throw redirect(303, '/sign-in');
-		}
+  sendMessage: async ({ request, locals, params }) => {
+    const { firebaseUser } = await loadUserContext(locals);
+    if (!firebaseUser) {
+      throw redirect(303, "/sign-in");
+    }
 
-		const formData = await request.formData();
-		const assignmentId = String(formData.get('campaign_influencer_id') ?? '').trim();
-		const messageBody = String(formData.get('message') ?? '').trim();
-		const channel = String(formData.get('channel') ?? '').trim() || undefined;
+    const formData = await request.formData();
+    const assignmentId = String(formData.get("campaign_influencer_id") ?? "").trim();
+    const messageBody = String(formData.get("message") ?? "").trim();
 
-		if (!assignmentId || !messageBody) {
-			return fail(400, { error: 'Write a message before sending.' });
-		}
+    if (!assignmentId || !messageBody) {
+      return fail(400, { error: "Write a message before sending." });
+    }
 
-		const { error: invokeError } = await locals.supabase.functions.invoke('outreach-send', {
-			body: {
-				campaign_influencer_id: assignmentId,
-				message: messageBody,
-				channel,
-			},
-			headers: {
-				Authorization: `Bearer ${session.access_token}`,
-			},
-		});
+    const firestore = locals.firestore;
+    const campaignRef = firestore.collection("outreach_campaigns").doc(params.id);
+    const targetRef = campaignRef.collection("targets").doc(assignmentId);
+    const targetSnap = await targetRef.get();
 
-		if (invokeError) {
-			console.error('[campaign detail] outreach-send error', invokeError);
-			return fail(500, { error: 'We could not send that message. Please try again.' });
-		}
+    if (!targetSnap.exists) {
+      return fail(404, { error: "Creator assignment not found." });
+    }
 
-		return { success: true, campaignId: params.id };
-	},
+    const targetData = targetSnap.data() ?? {};
+    const influencerId = (targetData.influencerId as string | undefined) ?? assignmentId;
+
+    const threadQuery = await firestore
+      .collection("threads")
+      .where("campaignId", "==", params.id)
+      .where("userId", "==", firebaseUser.uid)
+      .where("influencerId", "==", influencerId)
+      .limit(1)
+      .get();
+
+    let threadRef = threadQuery.docs[0]?.ref;
+    let threadData = threadQuery.docs[0]?.data() ?? null;
+    const now = new Date();
+
+    if (!threadRef) {
+      threadRef = firestore.collection("threads").doc();
+      await threadRef.set({
+        userId: firebaseUser.uid,
+        campaignId: params.id,
+        influencerId,
+        contactEmail: targetData.email ?? "",
+        gmailThreadId: null,
+        gmailLabelId: null,
+        status: "open",
+        channel: "email",
+        lastMessageAt: now,
+        messagesCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      });
+      threadData = {
+        messagesCount: 0,
+      };
+    }
+
+    await threadRef.collection("messages").add({
+      direction: "outgoing",
+      subject: null,
+      bodyHtml: messageBody,
+      bodyText: messageBody,
+      snippet: messageBody.slice(0, 160),
+      gmailMessageId: `local-${Date.now()}`,
+      sentAt: now,
+      createdAt: now,
+    });
+
+    await threadRef.set(
+      {
+        lastMessageAt: now,
+        updatedAt: now,
+        messagesCount: (threadData?.messagesCount as number | undefined ?? 0) + 1,
+      },
+      { merge: true },
+    );
+
+    await targetRef.set(
+      {
+        lastMessageAt: now,
+        updatedAt: now,
+      },
+      { merge: true },
+    );
+
+    return { success: true, campaignId: params.id };
+  },
 };

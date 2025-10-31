@@ -14,17 +14,10 @@
 		"test": "vitest run",
 		"test:unit": "vitest run tests/unit",
 		"test:integration": "vitest run tests/integration",
-		"test:functions": "deno test -A supabase/functions/tests",
-		"test:db": "supabase test db supabase/tests",
 		"test:e2e": "playwright test",
 		"test:e2e:headed": "playwright test --headed",
-		"test:ci": "bun run test:unit && bun run test:integration && bun run test:functions",
-		"test:all": "bun run test:db && bun run test:ci && bun run test:e2e",
-		"db:start": "docker compose up",
-		"db:push": "drizzle-kit push",
-		"db:generate": "drizzle-kit generate",
-		"db:migrate": "drizzle-kit migrate",
-		"db:studio": "drizzle-kit studio"
+		"test:ci": "bun run test:unit && bun run test:integration",
+		"test:all": "bun run test:ci && bun run test:e2e"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.49.1",
@@ -41,8 +34,6 @@
 		"@types/node": "^20",
 		"@vitest/browser": "^3.2.3",
 		"dotenv": "^16.4.5",
-		"drizzle-kit": "^0.30.2",
-		"drizzle-orm": "^0.40.0",
 		"jsdom": "^24.0.0",
 		"msw": "^2.6.7",
 		"playwright": "^1.53.0",
@@ -57,11 +48,10 @@
 		"whatwg-url": "^14.0.0"
 	},
 	"dependencies": {
+		"firebase": "^11.0.0",
+		"firebase-admin": "^13.5.0",
 		"@stripe/stripe-js": "^8.1.0",
-		"@supabase/ssr": "^0.4.1",
-		"@supabase/supabase-js": "^2.75.0",
 		"lightningcss": "^1.28.3",
-		"postgres": "^3.4.5",
 		"stripe": "^19.1.0"
 	}
 }

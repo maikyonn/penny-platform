@@ -3,9 +3,16 @@
 	import Button from '$lib/components/Button.svelte';
 
 	let { data } = $props();
-	const subscription = (data.subscription ?? null) as
-		| import('$lib/database.types').Database['public']['Tables']['subscriptions']['Row']
-		| null;
+	type SubscriptionInfo = {
+		type: string;
+		status: string;
+		priceId?: string | null;
+		productId?: string | null;
+		customerId?: string | null;
+		currentPeriodEnd?: string | null;
+	};
+
+	const subscription = (data.subscription ?? null) as SubscriptionInfo | null;
 	const usage = (data.usage ?? []) as Array<{
 		metric: string;
 		quantity: number;
@@ -61,10 +68,10 @@
 			<article class="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
 				<h2 class="text-lg font-semibold text-gray-900">Plan</h2>
 				<p class="mt-2 text-sm text-gray-500">Current subscription and renewal information.</p>
-				<div class="mt-4 space-y-3 text-sm text-gray-700">
-					<p><span class="text-gray-500">Plan:</span> {subscription?.plan ?? 'Free'}</p>
-					<p><span class="text-gray-500">Status:</span> {subscription?.status ?? 'active'}</p>
-					<p><span class="text-gray-500">Renews:</span> {subscription?.current_period_end ? new Date(subscription.current_period_end).toLocaleDateString() : '—'}</p>
+		<div class="mt-4 space-y-3 text-sm text-gray-700">
+			<p><span class="text-gray-500">Plan:</span> {subscription?.type ?? 'Free'}</p>
+			<p><span class="text-gray-500">Status:</span> {subscription?.status ?? 'active'}</p>
+			<p><span class="text-gray-500">Renews:</span> {subscription?.currentPeriodEnd ? new Date(subscription.currentPeriodEnd).toLocaleDateString() : '—'}</p>
 				</div>
 				<div class="mt-6 flex gap-3">
 					<Button href="/pricing" class="px-5">Change plan</Button>

@@ -2,10 +2,17 @@
 	import Logo from '$lib/components/Logo.svelte';
 	import Button from '$lib/components/Button.svelte';
 
+	type SubscriptionInfo = {
+		type: string;
+		status: string;
+		priceId?: string | null;
+		productId?: string | null;
+		customerId?: string | null;
+		currentPeriodEnd?: string | null;
+	};
+
 	let { data } = $props();
-	const subscription = (data.subscription ?? null) as
-		| import('$lib/database.types').Database['public']['Tables']['subscriptions']['Row']
-		| null;
+	const subscription = (data.subscription ?? null) as SubscriptionInfo | null;
 </script>
 
 <div class="min-h-screen bg-gray-50">
@@ -38,12 +45,12 @@
 			<div class="mx-auto w-full max-w-md rounded-3xl border border-gray-200 bg-white p-6 text-left shadow-sm">
 				<h2 class="text-lg font-semibold text-gray-900">Current plan</h2>
 				<ul class="mt-4 space-y-2 text-sm text-gray-700">
-					<li><span class="text-gray-500">Plan:</span> {subscription.plan}</li>
+					<li><span class="text-gray-500">Plan:</span> {subscription.type}</li>
 					<li><span class="text-gray-500">Status:</span> {subscription.status}</li>
 					<li>
 						<span class="text-gray-500">Renews:</span>
-						{subscription.current_period_end
-							? new Date(subscription.current_period_end).toLocaleDateString()
+						{subscription.currentPeriodEnd
+							? new Date(subscription.currentPeriodEnd).toLocaleDateString()
 							: '—'}
 					</li>
 				</ul>

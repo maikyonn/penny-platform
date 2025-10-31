@@ -1,17 +1,17 @@
-import { json, error } from '@sveltejs/kit';
-import { getStripeClient } from '$lib/server/stripe';
-import { getUserSubscription } from '$lib/server/subscriptions';
-import { loadUserContext } from '$lib/server/user-context';
-import type { RequestHandler } from './$types';
+import { json, error } from "@sveltejs/kit";
+import { getStripeClient } from "$lib/server/stripe";
+import { getUserSubscription } from "$lib/server/subscriptions";
+import { loadUserContext } from "$lib/server/user-context";
+import type { RequestHandler } from "./$types";
 
 export const POST: RequestHandler = async ({ locals, url }) => {
-	const { session } = await loadUserContext(locals);
-	if (!session) {
+	const { firebaseUser } = await loadUserContext(locals);
+	if (!firebaseUser) {
 		throw error(401, 'Authentication required');
 	}
 
-	const subscription = await getUserSubscription(locals.supabase, session.user.id);
-	if (!subscription?.provider_customer_id) {
+	const subscription = await getUserSubscription(locals.firestore, firebaseUser.uid);
+	if (!subscription?.customerId) {
 		return json(
 			{ error: 'No active subscription to manage. Start a plan first.' },
 			{ status: 400 }
@@ -20,7 +20,7 @@ export const POST: RequestHandler = async ({ locals, url }) => {
 
 	try {
 		const portal = await getStripeClient().billingPortal.sessions.create({
-			customer: subscription.provider_customer_id,
+			customer: subscription.customerId,
 			return_url: `${url.origin}/my-account`,
 		});
 

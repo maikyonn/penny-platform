@@ -1,7 +1,7 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { getFirestore } from "firebase-admin/firestore";
+import { adminDb } from "../firebase.js";
 
-const db = getFirestore();
+const db = adminDb;
 
 export const billingMeter = onSchedule("every 1 hours", async (event) => {
   // Aggregate usage logs and update billing meters
@@ -23,4 +23,3 @@ export const billingMeter = onSchedule("every 1 hours", async (event) => {
     console.log(`Processed ${logsSnapshot.size} usage logs for org ${orgId}`);
   }
 });
-

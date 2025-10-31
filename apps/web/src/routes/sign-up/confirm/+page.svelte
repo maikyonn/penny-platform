@@ -71,7 +71,7 @@
 		</div>
 
 		<p class="mt-6 text-xs text-gray-500">
-			Didn’t receive anything? Check your spam folder or add support@supabase.io to your contacts, then resend.
+			Didn’t receive anything? Check your spam folder or add support@penny.ai to your contacts, then resend.
 		</p>
 	</div>
 </div>

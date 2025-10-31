@@ -1,8 +1,9 @@
 import { onRequest } from "firebase-functions/v2/https";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 import { verifyUser } from "./index.js";
+import { adminDb } from "./firebase.js";
 
-const db = getFirestore();
+const db = adminDb;
 
 export const aiDraftOutreach = onRequest(async (req, res) => {
   try {
@@ -77,4 +78,3 @@ export const supportAiRouter = onRequest(async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-

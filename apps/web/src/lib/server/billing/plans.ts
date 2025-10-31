@@ -1,7 +1,6 @@
 import { STRIPE_PRICE_PRO_MONTHLY, STRIPE_PRICE_STARTER_MONTHLY, STRIPE_TRIAL_DAYS } from '$env/static/private';
-import type { Database } from '$lib/database.types';
 
-export type PlanTier = Database['public']['Enums']['plan_tier'];
+export type PlanTier = 'starter' | 'pro' | 'special_event';
 
 type PlanConfig = {
 	tier: PlanTier;
@@ -29,7 +28,7 @@ const PLAN_CONFIGS: PlanConfig[] = [
 		trialDays: 0, // Pro tier does not include trial
 	},
 	{
-		tier: 'enterprise',
+		tier: 'special_event',
 		label: 'Event / Pop-Up Special',
 		priceId: null,
 		trialDays: 0,

@@ -1,11 +1,35 @@
 import { onRequest } from "firebase-functions/v2/https";
-import { getFirestore } from "firebase-admin/firestore";
 import Stripe from "stripe";
+import { adminDb } from "./firebase.js";
 
-const db = getFirestore();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2024-12-18.acacia",
-});
+const db = adminDb;
+let stripeClient: Stripe | null = null;
+
+const stripeApiVersion: Stripe.LatestApiVersion = "2024-12-18.acacia";
+
+function getStripeClient(): Stripe | null {
+  if (stripeClient) {
+    return stripeClient;
+  }
+
+  const apiKey = process.env.STRIPE_SECRET_KEY;
+
+  if (!apiKey) {
+    if (process.env.FUNCTIONS_EMULATOR === "true") {
+      console.warn("STRIPE_SECRET_KEY not set; stripeWebhook will run in stub mode.");
+      return null;
+    }
+
+    console.error("STRIPE_SECRET_KEY environment variable is required for stripeWebhook.");
+    return null;
+  }
+
+  stripeClient = new Stripe(apiKey, {
+    apiVersion: stripeApiVersion,
+  });
+
+  return stripeClient;
+}
 
 export const stripeWebhook = onRequest(
   {
@@ -16,6 +40,12 @@ export const stripeWebhook = onRequest(
   },
   async (req, res) => {
     const sig = req.headers["stripe-signature"];
+
+    const stripe = getStripeClient();
+
+    if (!stripe) {
+      return res.status(200).json({ received: true, stubbed: true });
+    }
 
     if (!sig) {
       return res.status(400).send("Missing stripe-signature header");
@@ -40,17 +70,19 @@ export const stripeWebhook = onRequest(
       switch (event.type) {
         case "checkout.session.completed": {
           const session = event.data.object as Stripe.Checkout.Session;
-          const orgId = session.metadata?.orgId;
-          
-          if (orgId) {
-            await db.collection("organizations").doc(orgId).collection("subscription").doc("current").set({
-              provider: "stripe",
-              customerId: session.customer as string,
-              subscriptionId: session.subscription as string,
-              plan: session.metadata?.plan || "starter",
-              status: "active",
-              currentPeriodEnd: new Date(session.expires_at! * 1000),
-              createdAt: new Date(),
+          const userId = (session.metadata?.firebase_user_id as string | undefined) ?? (session.client_reference_id ?? null);
+
+          if (userId) {
+            await db.collection("users").doc(userId).set({
+              stripeCustomerId: typeof session.customer === "string" ? session.customer : session.customer?.id ?? null,
+              plan: {
+                type: (session.metadata?.plan_tier as string | undefined) ?? "starter",
+                status: "active",
+                priceId: session.metadata?.price_id ?? null,
+                productId: session.metadata?.product_id ?? null,
+                customerId: typeof session.customer === "string" ? session.customer : session.customer?.id ?? null,
+              },
+              updatedAt: new Date(),
             }, { merge: true });
           }
           break;
@@ -59,13 +91,28 @@ export const stripeWebhook = onRequest(
         case "customer.subscription.updated":
         case "customer.subscription.deleted": {
           const subscription = event.data.object as Stripe.Subscription;
-          const orgId = subscription.metadata?.orgId;
-          
-          if (orgId) {
-            await db.collection("organizations").doc(orgId).collection("subscription").doc("current").set({
-              status: subscription.status,
-              currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+          const userId = (subscription.metadata?.firebase_user_id as string | undefined) ?? null;
+
+          if (userId) {
+            const customerId = typeof subscription.customer === "string"
+              ? subscription.customer
+              : subscription.customer?.id ?? null;
+            const price = subscription.items.data[0]?.price;
+
+            await db.collection("users").doc(userId).set({
+              stripeCustomerId: customerId,
+              plan: {
+                type: (subscription.metadata?.plan_tier as string | undefined) ?? "starter",
+                status: subscription.status,
+                priceId: price?.id ?? null,
+                productId: typeof price?.product === "string" ? price.product : price?.product?.id ?? null,
+                customerId,
+              },
               updatedAt: new Date(),
+              planUpdatedAt: new Date(),
+              planCurrentPeriodEnd: subscription.current_period_end
+                ? new Date(subscription.current_period_end * 1000)
+                : null,
             }, { merge: true });
           }
           break;
@@ -82,4 +129,3 @@ export const stripeWebhook = onRequest(
     }
   }
 );
-

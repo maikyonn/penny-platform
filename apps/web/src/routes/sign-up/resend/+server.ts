@@ -1,4 +1,5 @@
-import { json } from '@sveltejs/kit';
+import { json } from "@sveltejs/kit";
+import { resendVerificationEmail } from "$lib/server/firebase-identity";
 
 export const POST = async ({ request, locals }) => {
 	const formData = await request.formData();
@@ -8,10 +9,10 @@ export const POST = async ({ request, locals }) => {
 		return json({ success: false, error: 'Email is required.' }, { status: 400 });
 	}
 
-	const { error } = await locals.supabase.auth.resend({ type: 'signup', email });
-
-	if (error) {
-		return json({ success: false, error: error.message }, { status: 400 });
+	try {
+		await resendVerificationEmail(email);
+	} catch (error) {
+		return json({ success: false, error: error instanceof Error ? error.message : 'Unable to resend verification email.' }, { status: 400 });
 	}
 
 	return json({ success: true });

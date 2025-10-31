@@ -1,62 +1,79 @@
-import { fail, redirect } from '@sveltejs/kit';
-import { loadUserContext } from '$lib/server/user-context';
-import type { Actions, PageServerLoad } from './$types';
+import { fail, redirect } from "@sveltejs/kit";
+import { loadUserContext } from "$lib/server/user-context";
+import type { Actions, PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ locals }) => {
-	const { session } = await loadUserContext(locals);
-	if (!session) {
-		throw redirect(303, '/sign-in');
-	}
+  const { firebaseUser } = await loadUserContext(locals);
+  if (!firebaseUser) {
+    throw redirect(303, "/sign-in");
+  }
 
-	return { session };
+  return { firebaseUser };
 };
 
 export const actions: Actions = {
-	create: async ({ request, locals }) => {
-		const { session } = await loadUserContext(locals);
-		if (!session) {
-			throw redirect(303, '/sign-in');
-		}
+  create: async ({ request, locals }) => {
+    const { firebaseUser } = await loadUserContext(locals);
+    if (!firebaseUser) {
+      throw redirect(303, "/sign-in");
+    }
 
-		const formData = await request.formData();
-		const name = String(formData.get('name') ?? '').trim();
-		const objective = String(formData.get('objective') ?? '').trim() || null;
-		const landingPageUrl = String(formData.get('landing_page_url') ?? '').trim() || null;
+    const formData = await request.formData();
+    const name = String(formData.get("name") ?? "").trim();
+    const objective = String(formData.get("objective") ?? "").trim() || null;
+    const landingPageUrl = String(formData.get("landing_page_url") ?? "").trim() || null;
 
-		if (!name) {
-			return fail(400, {
-				error: 'Campaign name is required.',
-				values: { name, objective, landing_page_url: landingPageUrl }
-			});
-		}
+    if (!name) {
+      return fail(400, {
+        error: "Campaign name is required.",
+        values: { name, objective, landing_page_url: landingPageUrl },
+      });
+    }
 
-		const { data, error: createError } = await locals.supabase.functions.invoke('campaigns-create', {
-			body: {
-				name,
-				objective,
-				landing_page_url: landingPageUrl,
-			},
-			headers: {
-				Authorization: `Bearer ${session.access_token}`,
-			},
-		});
+    const now = new Date();
+    const campaignRef = locals.firestore.collection("outreach_campaigns").doc();
 
-		if (createError) {
-			console.error('[campaign action] campaigns-create error', createError);
-			return fail(500, {
-				error: 'We could not create that campaign just yet. Try again in a moment.',
-				values: { name, objective, landing_page_url: landingPageUrl }
-			});
-		}
+    await campaignRef.set({
+      ownerUid: firebaseUser.uid,
+      orgId: null,
+      name,
+      description: objective,
+      status: "draft",
+      channel: "email",
+      gmail: {
+        useUserGmail: true,
+      },
+      template: {
+        subject: "",
+        bodyHtml: "",
+        bodyText: null,
+        variables: [],
+      },
+      schedule: {
+        startAt: null,
+        timezone: "UTC",
+        dailyCap: 50,
+        batchSize: 10,
+      },
+      throttle: {
+        perMinute: 10,
+        perHour: 100,
+      },
+      targetSource: null,
+      totals: {
+        pending: 0,
+        queued: 0,
+        sent: 0,
+        failed: 0,
+        bounced: 0,
+        replied: 0,
+        optedOut: 0,
+      },
+      landingPageUrl,
+      createdAt: now,
+      updatedAt: now,
+    });
 
-		const newCampaignId = data?.campaign?.id;
-		if (newCampaignId) {
-			throw redirect(303, `/campaign/${newCampaignId}`);
-		}
-
-		return {
-			success: true,
-			campaign: data?.campaign ?? null,
-		};
-	},
+    throw redirect(303, `/campaign/${campaignRef.id}`);
+  },
 };

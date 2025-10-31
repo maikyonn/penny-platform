@@ -10,7 +10,6 @@ export default defineConfig({
 			$components: path.resolve(__dirname, './src/lib/components'),
 			$lib: path.resolve(__dirname, './src/lib'),
 			$routes: path.resolve(__dirname, './src/routes'),
-			'@supabase/supabase-js': path.resolve(__dirname, './tests/mocks/@supabase/supabase-js.ts'),
 			'msw/node': path.resolve(__dirname, './node_modules/msw/lib/node/index.mjs')
 		},
 		conditions: ['node', 'browser', 'module', 'import', 'default']

@@ -1,87 +1,111 @@
-import type { Session } from '@supabase/supabase-js';
-import { getAdminSupabaseClient } from './supabase-admin';
+import type { DecodedIdToken } from "firebase-admin/auth";
+
+type FirestoreUserDoc = {
+  email?: string | null;
+  displayName?: string | null;
+  photoURL?: string | null;
+  usage?: {
+    emailDailyCap: number;
+    emailDailySent: number;
+    emailDailyResetAt: Date | FirebaseFirestore.Timestamp;
+  };
+  settings?: Record<string, unknown>;
+  features?: Record<string, boolean>;
+  plan?: {
+    type: string;
+    status: string;
+  };
+  createdAt?: Date | FirebaseFirestore.Timestamp;
+  updatedAt?: Date | FirebaseFirestore.Timestamp;
+};
 
 type UserProfile = {
-	user_id: string;
-	full_name: string | null;
-	avatar_url: string | null;
-	locale: string | null;
+  user_id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  locale: string | null;
+};
+
+export type DerivedSession = {
+  user: { id: string; email: string | null };
+  claims: DecodedIdToken;
+  tokenSource: "bearer" | "session" | null;
 };
 
 export type UserContext = {
-	session: Session | null;
-	profile: UserProfile | null;
+  session: DerivedSession | null;
+  firebaseUser: DecodedIdToken | null;
+  userDoc: FirestoreUserDoc | null;
+  profile: UserProfile | null;
 };
 
+async function ensureFirestoreUser(
+  firestore: FirebaseFirestore.Firestore,
+  firebaseUser: DecodedIdToken,
+): Promise<FirestoreUserDoc> {
+  const userRef = firestore.collection("users").doc(firebaseUser.uid);
+  const snapshot = await userRef.get();
+
+  if (!snapshot.exists) {
+    const now = new Date();
+    const seedDoc: FirestoreUserDoc = {
+      email: firebaseUser.email ?? null,
+      displayName: firebaseUser.name ?? null,
+      photoURL: firebaseUser.picture ?? null,
+      plan: {
+        type: "free",
+        status: "active",
+      },
+      usage: {
+        emailDailyCap: 50,
+        emailDailySent: 0,
+        emailDailyResetAt: now,
+      },
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await userRef.set(seedDoc, { merge: true });
+    return seedDoc;
+  }
+
+  return snapshot.data() as FirestoreUserDoc;
+}
+
 export async function loadUserContext(locals: App.Locals): Promise<UserContext> {
-	const {
-		data: { user },
-		error: userError,
-	} = await locals.supabase.auth.getUser();
+  const firebaseUser = locals.firebaseUser ?? null;
+  let firestoreProfile: UserProfile | null = null;
+  let userDoc: FirestoreUserDoc | null = null;
 
-	if (userError || !user) {
-		return {
-			session: null,
-			profile: null,
-		};
-	}
+  if (firebaseUser && locals.firestore) {
+    try {
+      userDoc = await ensureFirestoreUser(locals.firestore, firebaseUser);
+      firestoreProfile = {
+        user_id: firebaseUser.uid,
+        full_name: userDoc.displayName ?? null,
+        avatar_url: userDoc.photoURL ?? null,
+        locale: (userDoc.settings?.locale as string | undefined) ?? null,
+      };
+    } catch (error) {
+      console.error("[user-context] failed to load Firestore user document", error);
+    }
+  }
 
-	const session = await locals.getSession();
-	if (!session || session.user.id !== user.id) {
-		return {
-			session: null,
-			profile: null,
-		};
-	}
+  const session = await locals.getSession();
 
-	const userId = user.id;
+  if (!firebaseUser && !session) {
+    return {
+      session: null,
+      firebaseUser: null,
+      userDoc: null,
+      profile: null,
+    };
+  }
 
-	const { data: profile, error: profileError } = await locals.supabase
-		.from('profiles')
-		.select('user_id, full_name, avatar_url, locale')
-		.eq('user_id', userId)
-		.maybeSingle<UserProfile>();
-
-	if (profileError) {
-		console.error('[user-context] profile fetch error', profileError);
-	}
-
-	let ensuredProfile: UserProfile | null = profile ?? null;
-
-	if (!ensuredProfile) {
-		const admin = getAdminSupabaseClient();
-		const { error: upsertError } = await admin
-			.from('profiles')
-			.upsert(
-				{
-					user_id: userId,
-					full_name: session.user.user_metadata?.full_name ?? null,
-					avatar_url: session.user.user_metadata?.avatar_url ?? null,
-				},
-				{ onConflict: 'user_id' }
-			);
-
-		if (upsertError && upsertError.code !== '23505') {
-			console.error('[user-context] profile upsert error', upsertError);
-		}
-
-		const { data: refetched } = await locals.supabase
-			.from('profiles')
-			.select('user_id, full_name, avatar_url, locale')
-			.eq('user_id', userId)
-			.maybeSingle<UserProfile>();
-		ensuredProfile = refetched ?? ensuredProfile;
-	}
-
-	return {
-		session,
-		profile: ensuredProfile
-			? {
-				user_id: ensuredProfile.user_id,
-				full_name: ensuredProfile.full_name,
-				avatar_url: ensuredProfile.avatar_url,
-				locale: ensuredProfile.locale ?? null,
-			}
-			: null,
-	};
+  return {
+    session,
+    firebaseUser,
+    userDoc,
+    profile: firestoreProfile,
+  };
 }

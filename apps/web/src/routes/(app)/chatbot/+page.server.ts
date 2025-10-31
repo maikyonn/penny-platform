@@ -1,97 +1,116 @@
-import { fail, redirect } from '@sveltejs/kit';
-import { CHATBOT_STUB_MODE, SUPABASE_ANON_KEY, SUPABASE_URL } from '$env/static/private';
-import { loadUserContext } from '$lib/server/user-context';
-import type { Actions, PageServerLoad } from './$types';
+import { fail, redirect } from "@sveltejs/kit";
+import { env } from "$env/dynamic/private";
+import { FieldValue } from "firebase-admin/firestore";
+import { loadUserContext } from "$lib/server/user-context";
+import { signInWithCustomToken } from "$lib/server/firebase-identity";
+import type { Actions, PageServerLoad } from "./$types";
+
+const CHATBOT_STUB_MODE = env.CHATBOT_STUB_MODE === "1";
+
+function getFunctionsBase(projectId: string, emulator: boolean) {
+  return emulator
+    ? `http://127.0.0.1:9004/${projectId}/us-central1`
+    : `https://us-central1-${projectId}.cloudfunctions.net`;
+}
 
 export const load: PageServerLoad = async ({ locals }) => {
-	const { session } = await loadUserContext(locals);
-	if (!session) {
-		throw redirect(303, '/sign-in');
-	}
+  const { firebaseUser } = await loadUserContext(locals);
+  if (!firebaseUser) {
+    throw redirect(303, "/sign-in");
+  }
 
-	return { session };
+  return { firebaseUser };
 };
 
 export const actions: Actions = {
-	send: async ({ request, locals }) => {
-		const { session } = await loadUserContext(locals);
-		if (!session) {
-			throw redirect(303, '/sign-in');
-		}
+  send: async ({ request, locals }) => {
+    const { firebaseUser } = await loadUserContext(locals);
+    if (!firebaseUser) {
+      throw redirect(303, "/sign-in");
+    }
 
-		const formData = await request.formData();
-		const message = String(formData.get('message') ?? '').trim();
+    const formData = await request.formData();
+    const message = String(formData.get("message") ?? "").trim();
 
-		if (!message) {
-			return fail(400, { error: 'Message cannot be empty.' });
-		}
+    if (!message) {
+      return fail(400, { error: "Message cannot be empty." });
+    }
 
-		const name = String(formData.get('name') ?? '').trim() || 'New Launch';
-		const objective = String(formData.get('objective') ?? '').trim() || null;
-		const landing_page_url = String(formData.get('landing_page_url') ?? '').trim() || null;
+    const name = String(formData.get("name") ?? "").trim() || "New Launch";
+    const objective = String(formData.get("objective") ?? "").trim() || null;
+    const landingPageUrl = String(formData.get("landing_page_url") ?? "").trim() || null;
 
-		if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-			console.error('[chatbot action] missing Supabase configuration');
-			return fail(500, { error: 'Supabase configuration missing. Please contact support.' });
-		}
+    if (CHATBOT_STUB_MODE) {
+      const nowIso = new Date().toISOString();
+      return {
+        success: true,
+        conversation: [
+          { role: "assistant", kind: "bubble", content: "Tell me about your campaign.", created_at: nowIso },
+          { role: "user", kind: "bubble", content: message, created_at: nowIso },
+          { role: "assistant", kind: "card", content: `Your campaign **${name}** is ready. Open outreach: /campaign/cmp_stub/outreach`, created_at: nowIso },
+        ],
+        campaign_id: "cmp_stub",
+      };
+    }
 
-		if (CHATBOT_STUB_MODE === '1') {
-			const jwt = session.access_token;
-			console.info('[chatbot action] stub mode active', jwt ? `jwt=${jwt.slice(0, 16)}…` : '(no jwt)');
-			const nowIso = new Date().toISOString();
-			return {
-				success: true,
-				conversation: [
-					{ role: 'assistant', kind: 'bubble', content: 'Tell me about your campaign.', created_at: nowIso },
-					{ role: 'user', kind: 'bubble', content: message, created_at: nowIso },
-					{ role: 'assistant', kind: 'card', content: `Your campaign **${name}** is ready. Open outreach: /campaign/cmp_stub/outreach`, created_at: nowIso }
-				],
-				campaign_id: 'cmp_stub',
-				debug: {
-					jwt
-				}
-			};
-		}
+    const projectId = env.GOOGLE_CLOUD_PROJECT ?? process.env.GCLOUD_PROJECT ?? "demo-penny-dev";
+    const functionsBase = getFunctionsBase(projectId, env.FUNCTIONS_EMULATOR === "true");
 
-		console.info('[chatbot action] invoking edge function', {
-			jwt: session.access_token?.slice(0, 16)
-		});
+    let idToken: string;
+    try {
+      const customToken = await locals.firebaseAuth.createCustomToken(firebaseUser.uid);
+      const session = await signInWithCustomToken(customToken);
+      idToken = session.idToken;
+    } catch (tokenError) {
+      console.error("[chatbot] failed to mint ID token", tokenError);
+      return fail(500, { error: "Assistant is unavailable at the moment." });
+    }
 
-		console.info('[chatbot action] calling supabase function', {
-			jwt: session.access_token?.slice(0, 16) ?? null,
-			user: session.user.id
-		});
+    const response = await fetch(`${functionsBase}/chatbotStub`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        orgId: null,
+        sessionId: `${firebaseUser.uid}-default`,
+        message,
+        campaign: { name, objective, landingPageUrl },
+      }),
+    });
 
-		const response = await fetch(`${SUPABASE_URL}/functions/v1/chatbot-stub`, {
-			method: 'POST',
-			headers: {
-				Authorization: `Bearer ${session.access_token}`,
-				'apikey': SUPABASE_ANON_KEY,
-				'content-type': 'application/json'
-			},
-			body: JSON.stringify({
-				message,
-				user_id: session.user.id,
-				campaign: { name, objective, landing_page_url }
-			})
-		});
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("[chatbot] function error", response.status, text);
+      return fail(500, { error: "Assistant could not respond. Please try again." });
+    }
 
-		if (!response.ok) {
-			const text = await response.text();
-			console.error('[chatbot action] chatbot-stub http error', response.status, text);
-			return fail(500, { error: 'Unable to process that message. Please try again.' });
-		}
+    const payload = await response.json() as { success: boolean; response?: string };
 
-		const data = (await response.json()) as Record<string, unknown> | null;
+    const now = new Date();
+    await locals.firestore
+      .collection("campaign_chatbot_history")
+      .doc(`${firebaseUser.uid}_default`)
+      .set(
+        {
+          messages: FieldValue.arrayUnion(
+            { role: "user", content: message, created_at: now.toISOString(), kind: "bubble" },
+            { role: "assistant", content: payload.response ?? "Thanks for the details!", created_at: now.toISOString(), kind: "bubble" },
+          ),
+          updatedAt: now,
+        },
+        { merge: true },
+      );
 
-		if (!data || !('campaign_id' in data)) {
-			return fail(500, { error: 'Assistant could not create a campaign. Please try again.' });
-		}
-
-		return {
-			success: true,
-			conversation: data.conversation ?? [],
-			campaign_id: data.campaign_id
-		};
-	}
+    return {
+      success: true,
+      conversation: [
+        { role: "assistant", kind: "bubble", content: "Tell me about your campaign.", created_at: now.toISOString() },
+        { role: "user", kind: "bubble", content: message, created_at: now.toISOString() },
+        { role: "assistant", kind: "bubble", content: payload.response ?? "Great! I've noted that.", created_at: now.toISOString() },
+      ],
+      campaign_id: null,
+    };
+  },
 };

@@ -1,36 +1,40 @@
 <script lang="ts">
 	import Logo from '$lib/components/Logo.svelte';
-import { loadStripe } from '@stripe/stripe-js';
-import type { Stripe as StripeClient } from '@stripe/stripe-js';
-import { page } from '$app/stores';
-import { get } from 'svelte/store';
-import { PUBLIC_STRIPE_PUBLISHABLE_KEY } from '$env/static/public';
+	import { PUBLIC_STRIPE_PUBLISHABLE_KEY } from '$env/static/public';
+	import type { PlanTier } from '$lib/server/billing/plans';
+	import { page } from '$app/stores';
+	import { loadStripe, type Stripe as StripeClient } from '@stripe/stripe-js';
+	import { get } from 'svelte/store';
 
-let { data } = $props();
-const activePlan = (data.subscription?.plan ?? null) as
-  | import('$lib/database.types').Database['public']['Enums']['plan_tier']
-  | null;
+	let { data } = $props();
 
-function resolveCancelled() {
-  try {
-    const store = get(page);
-    return store?.url?.searchParams?.get('cancelled') === '1';
-  } catch (err) {
-    return false;
-  }
-}
+	type KnownSubscriptionType = PlanTier | 'free' | 'enterprise' | 'none' | null;
+	const subscriptionType = (data.subscription?.type ?? null) as KnownSubscriptionType;
+	const activePlan: PlanTier | null =
+		subscriptionType === 'starter' || subscriptionType === 'pro' || subscriptionType === 'special_event'
+			? subscriptionType
+			: null;
 
-const cancelled = resolveCancelled();
-const siteHasStripe = Boolean(PUBLIC_STRIPE_PUBLISHABLE_KEY);
-const stripePromise: Promise<StripeClient | null> | null = siteHasStripe
-  ? loadStripe(PUBLIC_STRIPE_PUBLISHABLE_KEY)
-  : null;
+	function resolveCancelled() {
+		try {
+			const store = get(page);
+			return store?.url?.searchParams?.get('cancelled') === '1';
+		} catch {
+			return false;
+		}
+	}
 
+	const siteHasStripe = Boolean(PUBLIC_STRIPE_PUBLISHABLE_KEY);
+	const stripePromise: Promise<StripeClient | null> | null = siteHasStripe
+		? loadStripe(PUBLIC_STRIPE_PUBLISHABLE_KEY)
+		: null;
+
+	const cancelled = resolveCancelled();
 	let checkoutInFlight = $state<string | null>(null);
 	let checkoutError = $state<string | null>(null);
 
 	type PricingPlan = {
-		tier: 'starter' | 'pro' | 'special_event';
+		tier: PlanTier;
 		name: string;
 		price: number;
 		cadence: 'month' | 'one-time';
@@ -165,11 +169,11 @@ const stripePromise: Promise<StripeClient | null> | null = siteHasStripe
 				throw new Error(message);
 			}
 
-		const stripe = stripePromise ? await stripePromise : null;
-		if (stripe) {
-			const { error } = await (stripe as any).redirectToCheckout({ sessionId: payload.sessionId });
-				if (error) {
-					throw new Error(error.message);
+			const stripe = stripePromise ? await stripePromise : null;
+			if (stripe) {
+				const { error: redirectError } = await stripe.redirectToCheckout({ sessionId: payload.sessionId });
+				if (redirectError) {
+					throw new Error(redirectError.message);
 				}
 			} else if (payload.url) {
 				window.location.href = payload.url;

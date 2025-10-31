@@ -7,7 +7,7 @@
 	const campaignCounts = data.campaignCounts ?? { total: 0, active: 0, draft: 0, completed: 0 };
 	const influencerSummary = data.influencerSummary ?? { total: 0, invited: 0, accepted: 0, in_conversation: 0, completed: 0 };
 	const metricsSummary = data.metricsSummary ?? { impressions: 0, clicks: 0, conversions: 0, spend_cents: 0 };
-	const userDisplayName = data.profile?.full_name ?? data.session?.user?.email ?? 'there';
+const userDisplayName = data.profile?.full_name ?? data.firebaseUser?.email ?? 'there';
 	const globalNotice = data.error ?? null;
 
 	const formatCount = (value: number | null | undefined) => Number(value ?? 0).toLocaleString();

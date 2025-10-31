@@ -1,7 +1,7 @@
-import { redirect } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
+import { redirect } from "@sveltejs/kit";
+import type { RequestHandler } from "./$types";
 
 export const POST: RequestHandler = async ({ locals }) => {
-	await locals.supabase.auth.signOut();
+	locals.clearSession();
 	throw redirect(303, '/');
 };

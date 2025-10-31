@@ -1,7 +1,7 @@
 import { onMessagePublished } from "firebase-functions/v2/pubsub";
-import { getFirestore } from "firebase-admin/firestore";
+import { adminDb } from "../firebase.js";
 
-const db = getFirestore();
+const db = adminDb;
 
 export const outreachSend = onMessagePublished("outreach-send", async (event) => {
   const message = event.data.message;
@@ -39,4 +39,3 @@ export const outreachSend = onMessagePublished("outreach-send", async (event) =>
     throw error;
   }
 });
-

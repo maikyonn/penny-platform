@@ -1,170 +1,183 @@
-import { error, fail, redirect } from '@sveltejs/kit';
-import { loadUserContext } from '$lib/server/user-context';
-import type { Actions, PageServerLoad } from './$types';
+import { error, fail, redirect } from "@sveltejs/kit";
+import { env } from "$env/dynamic/private";
+import { FieldValue } from "firebase-admin/firestore";
+import { loadUserContext } from "$lib/server/user-context";
+import { signInWithCustomToken } from "$lib/server/firebase-identity";
+import type { Actions, PageServerLoad } from "./$types";
+
+type ConversationTurn = {
+  role: string;
+  content: string;
+  created_at: string;
+  kind: string;
+};
+
+function formatConversation(conversation: Array<{ role: string; content: string; kind?: string }>) {
+  const now = Date.now();
+  return conversation.map((turn, index) => ({
+    role: turn.role === "assistant" ? "assistant" : "user",
+    content: turn.content,
+    kind: turn.kind ?? "bubble",
+    created_at: new Date(now - (conversation.length - index) * 500).toISOString(),
+  }));
+}
+
+function getFunctionsBase(projectId: string, emulator: boolean) {
+  return emulator
+    ? `http://127.0.0.1:9004/${projectId}/us-central1`
+    : `https://us-central1-${projectId}.cloudfunctions.net`;
+}
 
 export const load: PageServerLoad = async ({ locals, params }) => {
-	const { session } = await loadUserContext(locals);
-	if (!session) {
-		throw redirect(303, '/sign-in');
-	}
+  const { firebaseUser } = await loadUserContext(locals);
+  if (!firebaseUser) {
+    throw redirect(303, "/sign-in");
+  }
 
-	const campaignId = params.id;
+  const campaignRef = locals.firestore.collection("outreach_campaigns").doc(params.id);
+  const campaignSnap = await campaignRef.get();
 
-	const { data: campaign, error: campaignError } = await locals.supabase
-		.from('campaigns')
-		.select('id, name, created_by')
-		.eq('id', campaignId)
-		.maybeSingle();
+  if (!campaignSnap.exists) {
+    throw error(404, "Campaign not found");
+  }
 
-	if (campaignError) {
-		console.error('[campaign chat] campaignError', campaignError);
-	}
+  const campaign = campaignSnap.data() ?? {};
+  if (campaign.ownerUid !== firebaseUser.uid) {
+    throw error(403, "Forbidden");
+  }
 
-	if (!campaign) {
-		throw error(404, 'Campaign not found');
-	}
+  const mockBaseUrl = env.MOCK_CHAT_BASE_URL ?? "";
+  if (mockBaseUrl) {
+    try {
+      const response = await fetch(`${mockBaseUrl}/conversation`, {
+        headers: { accept: "application/json" },
+        cache: "no-store",
+      });
+      if (response.ok) {
+        const conversation = (await response.json()) as Array<{ role: string; content: string; kind?: string }>;
+        return {
+          campaign: { id: campaignSnap.id, name: campaign.name },
+          sessionId: null,
+          messages: formatConversation(conversation),
+          mockChatActive: true,
+        };
+      }
+    } catch (mockError) {
+      console.warn("[campaign chat] mock server unavailable", mockError);
+    }
+  }
 
-	if (campaign.created_by !== session.user.id) {
-		throw error(403, 'Forbidden');
-	}
+  const chatDoc = locals.firestore
+    .collection("campaign_chat_sessions")
+    .doc(`${firebaseUser.uid}_${params.id}`);
+  const chatSnap = await chatDoc.get();
+  const messages = (chatSnap.data()?.messages as ConversationTurn[] | undefined) ?? [];
 
-	const mockBaseUrl = process.env.MOCK_CHAT_BASE_URL ?? 'http://localhost:9000';
-
-	const adaptConversation = (conversation: Array<{ role: string; content: string; kind?: string }>) => {
-		const now = Date.now();
-		return conversation.map((turn, index) => ({
-			role: turn.role === 'assistant' ? 'assistant' : 'user',
-			content: turn.content,
-			kind: turn.kind ?? 'bubble',
-			created_at: new Date(now - (conversation.length - index) * 1000).toISOString(),
-		}));
-	};
-
-	try {
-		const response = await fetch(`${mockBaseUrl}/conversation`, {
-			headers: { accept: 'application/json' },
-			cache: 'no-store',
-		});
-
-		if (response.ok) {
-			const conversation = (await response.json()) as Array<{ role: string; content: string; kind?: string }>;
-			return {
-				campaign,
-				sessionId: null,
-				messages: adaptConversation(conversation),
-				mockChatActive: true,
-			};
-		}
-	} catch (mockError) {
-		console.warn('[campaign chat] mock conversation unavailable, falling back to Supabase', mockError);
-	}
-
-	const { data: sessionRow } = await locals.supabase
-		.from('chat_sessions')
-		.select('id')
-		.eq('campaign_id', campaign.id)
-		.eq('topic', 'support')
-		.order('created_at', { ascending: false })
-		.limit(1)
-		.maybeSingle();
-
-	const sessionId = sessionRow?.id ?? null;
-
-	const { data: messages } = sessionId
-		? await locals.supabase
-			.from('chat_messages')
-			.select('role, content, created_at')
-			.eq('session_id', sessionId)
-			.order('created_at')
-		: { data: [] as Array<{ role: string; content: string; created_at: string }> };
-
-	return {
-		campaign,
-		sessionId,
-		messages: (messages ?? []).map((message) => ({
-			role: message.role,
-			content: message.content,
-			created_at: message.created_at,
-			kind: 'bubble',
-		})),
-		mockChatActive: false,
-	};
+  return {
+    campaign: { id: campaignSnap.id, name: campaign.name },
+    sessionId: chatDoc.id,
+    messages,
+    mockChatActive: Boolean(mockBaseUrl),
+  };
 };
 
 export const actions: Actions = {
-	send: async ({ request, locals, params }) => {
-		const { session } = await loadUserContext(locals);
-		if (!session) {
-			throw redirect(303, '/sign-in');
-		}
+  send: async ({ request, locals, params }) => {
+    const { firebaseUser } = await loadUserContext(locals);
+    if (!firebaseUser) {
+      throw redirect(303, "/sign-in");
+    }
 
-		const formData = await request.formData();
-		const message = String(formData.get('message') ?? '').trim();
+    const formData = await request.formData();
+    const message = String(formData.get("message") ?? "").trim();
 
-		if (!message) {
-			return fail(400, { error: 'Type a message to continue the briefing.' });
-		}
+    if (!message) {
+      return fail(400, { error: "Type a message to continue the briefing." });
+    }
 
-		const mockBaseUrl = process.env.MOCK_CHAT_BASE_URL ?? 'http://localhost:9000';
+    const mockBaseUrl = env.MOCK_CHAT_BASE_URL ?? "";
+    if (mockBaseUrl) {
+      try {
+        const response = await fetch(`${mockBaseUrl}/message`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            accept: "application/json",
+          },
+          body: JSON.stringify({ message }),
+        });
 
-		const adaptConversation = (conversation: Array<{ role: string; content: string; kind?: string }>) => {
-			const now = Date.now();
-			return conversation.map((turn, index) => ({
-				role: turn.role === 'assistant' ? 'assistant' : 'user',
-				content: turn.content,
-				kind: turn.kind ?? 'bubble',
-				created_at: new Date(now - (conversation.length - index) * 1000).toISOString(),
-			}));
-		};
+        if (response.ok) {
+          const payload = await response.json() as {
+            reply: string;
+            kind?: string;
+            done?: boolean;
+            conversation?: Array<{ role: string; content: string; kind?: string }>;
+          };
 
-		try {
-			const response = await fetch(`${mockBaseUrl}/message`, {
-				method: 'POST',
-				headers: {
-					'content-type': 'application/json',
-					accept: 'application/json',
-				},
-				body: JSON.stringify({ message }),
-			});
+          return {
+            success: true,
+            mockChat: true,
+            done: payload.done ?? false,
+            conversation: payload.conversation ? formatConversation(payload.conversation) : null,
+          };
+        }
+      } catch (mockError) {
+        console.warn("[campaign chat] mock server invocation failed", mockError);
+      }
+    }
 
-			if (response.ok) {
-				const payload = await response.json() as {
-					reply: string;
-					kind?: string;
-					done?: boolean;
-					conversation?: Array<{ role: string; content: string; kind?: string }>;
-				};
+    const projectId = env.GOOGLE_CLOUD_PROJECT ?? process.env.GCLOUD_PROJECT ?? "demo-penny-dev";
+    const functionsBase = getFunctionsBase(projectId, env.FUNCTIONS_EMULATOR === "true");
 
-				return {
-					success: true,
-					mockChat: true,
-					done: payload.done ?? false,
-					conversation: payload.conversation ? adaptConversation(payload.conversation) : null,
-				};
-			}
-		} catch (mockError) {
-			console.warn('[campaign chat] mock server invocation failed, falling back to Supabase', mockError);
-		}
+    let idToken: string;
+    try {
+      const customToken = await locals.firebaseAuth.createCustomToken(firebaseUser.uid);
+      const session = await signInWithCustomToken(customToken);
+      idToken = session.idToken;
+    } catch (tokenError) {
+      console.error("[campaign chat] failed to mint ID token", tokenError);
+      return fail(500, { error: "Unable to contact assistant right now." });
+    }
 
-		const { data, error: invokeError } = await locals.supabase.functions.invoke('support-ai-router', {
-			body: {
-				campaign_id: params.id,
-				message,
-			},
-			headers: {
-				Authorization: `Bearer ${session.access_token}`,
-			},
-		});
+    const response = await fetch(`${functionsBase}/supportAiRouter`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        orgId: null,
+        query: message,
+      }),
+    });
 
-		if (invokeError) {
-			console.error('[campaign chat] support-ai-router error', invokeError);
-			return fail(500, { error: 'We could not process that message. Please try again.' });
-		}
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("[campaign chat] supportAiRouter error", response.status, text);
+      return fail(500, { error: "Assistant could not process the message." });
+    }
 
-		return {
-			success: true,
-			mockChat: false,
-			session_id: data?.session_id ?? null,
-		};
-	},
+    const chatDoc = locals.firestore
+      .collection("campaign_chat_sessions")
+      .doc(`${firebaseUser.uid}_${params.id}`);
+
+    const nowIso = new Date().toISOString();
+    await chatDoc.set(
+      {
+        messages: FieldValue.arrayUnion(
+          { role: "user", content: message, created_at: nowIso, kind: "bubble" },
+          { role: "assistant", content: "I'll route this request for you.", created_at: nowIso, kind: "bubble" },
+        ),
+        updatedAt: new Date(),
+      },
+      { merge: true },
+    );
+
+    return {
+      success: true,
+      mockChat: false,
+      session_id: chatDoc.id,
+    };
+  },
 };

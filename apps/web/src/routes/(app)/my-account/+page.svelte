@@ -2,8 +2,18 @@
 	import Logo from '$lib/components/Logo.svelte';
 	import Button from '$lib/components/Button.svelte';
 
+type SubscriptionInfo = {
+	type: string;
+	status: string;
+	priceId?: string | null;
+	productId?: string | null;
+	customerId?: string | null;
+	currentPeriodEnd?: string | null;
+};
+
 let { data } = $props();
 const form = $derived(((data as { form?: any })?.form) ?? null);
+const subscription = (data.subscription ?? null) as SubscriptionInfo | null;
 	let fullName = $state(data.profile?.full_name ?? '');
 	let locale = $state(data.profile?.locale ?? 'en');
 	let billingError = $state<string | null>(null);
@@ -100,10 +110,10 @@ const form = $derived(((data as { form?: any })?.form) ?? null);
 			<article class="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
 				<h2 class="text-lg font-semibold text-gray-900">Billing</h2>
 				<p class="mt-2 text-sm text-gray-500">Status of your current subscription.</p>
-				<div class="mt-5 space-y-3 text-sm text-gray-700">
-					<p><span class="text-gray-500">Plan:</span> {data.subscription?.plan ?? 'Free'}</p>
-					<p><span class="text-gray-500">Status:</span> {data.subscription?.status ?? 'active'}</p>
-					<p><span class="text-gray-500">Next invoice:</span> {data.subscription?.current_period_end ? new Date(data.subscription.current_period_end).toLocaleDateString() : '—'}</p>
+		<div class="mt-5 space-y-3 text-sm text-gray-700">
+			<p><span class="text-gray-500">Plan:</span> {subscription?.type ?? 'Free'}</p>
+			<p><span class="text-gray-500">Status:</span> {subscription?.status ?? 'active'}</p>
+			<p><span class="text-gray-500">Next invoice:</span> {subscription?.currentPeriodEnd ? new Date(subscription.currentPeriodEnd).toLocaleDateString() : '—'}</p>
 				</div>
 				<div class="mt-6 flex gap-3">
 					<Button variant="outline" class="px-5" href="/pricing">View plans</Button>

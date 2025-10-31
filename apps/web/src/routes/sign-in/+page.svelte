@@ -80,11 +80,11 @@ $effect(() => {
 		</div>
 
 				<!-- Forgot Password -->
-				<div class="flex items-center justify-between">
-					<label class="flex items-center">
-				<input type="checkbox" class="w-4 h-4 rounded border-gray-300 text-[#FF6F61] focus:ring-[#FF6F61]" />
-						<span class="ml-2 text-sm text-gray-600">Remember me</span>
-					</label>
+		<div class="flex items-center justify-between">
+			<label class="flex items-center">
+		<input name="remember" type="checkbox" class="w-4 h-4 rounded border-gray-300 text-[#FF6F61] focus:ring-[#FF6F61]" />
+				<span class="ml-2 text-sm text-gray-600">Remember me</span>
+			</label>
 					<a href="/forgot-password" class="text-sm text-gray-600 hover:text-black transition">
 						Forgot password?
 					</a>

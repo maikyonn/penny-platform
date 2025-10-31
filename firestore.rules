@@ -1,126 +1,118 @@
 rules_version = '2';
 service cloud.firestore {
-  match /databases/{db}/documents {
-    function isSignedIn() { 
-      return request.auth != null; 
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    function isOrgMember(orgId) {
-      return exists(/databases/$(db)/documents/organizations/$(orgId)/members/$(request.auth.uid));
+    function isUser(uid) {
+      return isSignedIn() && request.auth.uid == uid;
     }
 
-    function hasRole(orgId, roles) {
-      return get(/databases/$(db)/documents/organizations/$(orgId)/members/$(request.auth.uid)).data.role in roles;
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
     }
 
-    // User profiles
-    match /profiles/{uid} {
-      allow read: if isSignedIn() && (request.auth.uid == uid || isOrgMember(resource.data.currentOrgId));
-      allow write: if request.auth.uid == uid;
+    function inOrg(orgId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/orgs/$(orgId)/members/$(request.auth.uid));
     }
 
-    // Gmail accounts (OAuth tokens)
-    match /gmailAccounts/{uid} {
-      allow read, write: if request.auth.uid == uid;
-    }
+    // USERS
+    match /users/{uid} {
+      allow read: if isUser(uid) || isAdmin();
+      allow create: if isUser(uid);
+      allow update: if isUser(uid);
+      allow delete: if false;
 
-    // Global influencer catalog
-    match /influencers/{influencerId} {
-      allow read: if true; // Public catalog
-      allow write: if false; // Only backend writers (Functions/Run SA)
-
-      match /profiles/{doc} { 
-        allow read: if true; 
-        allow write: if false; 
-      }
-
-      match /statsHistory/{date} { 
-        allow read: if true; 
-        allow write: if false; 
+      match /integrations/{provider} {
+        allow read, write: if isUser(uid) || isAdmin();
       }
     }
 
-    // Organizations and nested data
-    match /organizations/{orgId} {
-      allow read: if isSignedIn() && isOrgMember(orgId);
-      allow write: if isSignedIn() && hasRole(orgId, ['owner','admin']);
+    // ORGS
+    match /orgs/{orgId} {
+      allow read: if inOrg(orgId) || isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if isAdmin() || (isSignedIn() && request.auth.uid == resource.data.ownerUid);
 
-      // Org members
       match /members/{uid} {
-        allow read: if isSignedIn() && isOrgMember(orgId);
-        allow write: if isSignedIn() && (request.auth.uid == uid || hasRole(orgId, ['owner','admin']));
+        allow read: if inOrg(orgId) || isAdmin();
+        allow write: if isAdmin() || (isSignedIn() && request.auth.uid == resource.data.ownerUid);
       }
 
-      // Org invites
       match /invites/{inviteId} {
-        allow read, write: if isSignedIn() && hasRole(orgId, ['owner','admin']);
+        allow read: if inOrg(orgId) || isAdmin();
+        allow create, update, delete: if isAdmin() || (isSignedIn() && request.auth.uid == resource.data.ownerUid);
       }
+    }
 
-      // Subscription
-      match /subscription {
-        allow read, write: if isSignedIn() && hasRole(orgId, ['owner','admin']);
+    // GLOBAL INFLUENCERS
+    match /influencers/{influencerId} {
+      allow read: if isSignedIn();
+      allow write, delete: if isAdmin();
+    }
+
+    // SEARCH JOBS
+    match /search_jobs/{jobId} {
+      allow read, create: if isSignedIn();
+      allow update, delete: if isSignedIn() && request.auth.uid == resource.data.createdByUid || isAdmin();
+    }
+
+    // OUTREACH CAMPAIGNS
+    match /outreach_campaigns/{campaignId} {
+      allow read, create: if isSignedIn();
+      allow update, delete: if isSignedIn() && (
+        request.auth.uid == resource.data.ownerUid ||
+        (resource.data.orgId != null && inOrg(resource.data.orgId))
+      );
+
+      match /targets/{targetId} {
+        allow read: if isSignedIn() && (
+          request.auth.uid == resource.data.ownerUid ||
+          (resource.data.orgId != null && inOrg(resource.data.orgId))
+        );
+        allow create, update: if isSignedIn() && request.auth.uid == resource.data.ownerUid;
+        allow delete: if false;
       }
+    }
 
-      // Usage logs
-      match /usageLogs/{logId} {
-        allow read, write: if isSignedIn() && isOrgMember(orgId);
+    // THREADS & MESSAGES
+    match /threads/{threadId} {
+      allow read: if isSignedIn() &&
+        (request.auth.uid == resource.data.userId ||
+          (resource.data.orgId != null && inOrg(resource.data.orgId)));
+      allow create, update, delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn() &&
+          (request.auth.uid == resource.data.userId ||
+            (resource.data.orgId != null && inOrg(resource.data.orgId)));
+        allow create, update, delete: if isAdmin();
       }
+    }
 
-      // Campaigns
-      match /campaigns/{campaignId} {
-        allow read, write: if isSignedIn() && isOrgMember(orgId);
+    // EMAIL QUEUE
+    match /email_queue/{queueId} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == resource.data.userId);
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      allow update, delete: if isAdmin();
+    }
 
-        // Campaign targets
-        match /targets/{doc} {
-          allow read, write: if isSignedIn() && isOrgMember(orgId);
-        }
+    // SUPPRESSION
+    match /suppression/{suppressionId} {
+      allow read, write, delete: if isAdmin();
+    }
 
-        // Campaign assets
-        match /assets/{assetId} {
-          allow read, write: if isSignedIn() && isOrgMember(orgId);
-        }
+    // WEBHOOK EVENTS
+    match /webhook_events/{eventId} {
+      allow read, write: if isAdmin();
+    }
 
-        // Campaign metrics
-        match /metrics/{date} {
-          allow read, write: if isSignedIn() && isOrgMember(orgId);
-        }
-
-        // Campaign influencers (pivot)
-        match /influencers/{ciId} {
-          allow read, write: if isSignedIn() && isOrgMember(orgId);
-
-          // Outreach threads
-          match /threads/{threadId} {
-            allow read, write: if isSignedIn() && isOrgMember(orgId);
-
-            // Outreach messages
-            match /messages/{messageId} {
-              allow read, write: if isSignedIn() && isOrgMember(orgId);
-            }
-          }
-        }
-
-        // AI recommendations
-        match /aiRecommendations/{recId} {
-          allow read, write: if isSignedIn() && isOrgMember(orgId);
-        }
-      }
-
-      // Chat sessions
-      match /chatSessions/{sessionId} {
-        allow read, write: if isSignedIn() && isOrgMember(orgId);
-
-        // Chat messages
-        match /messages/{msgId} {
-          allow read, write: if isSignedIn() && isOrgMember(orgId);
-        }
-      }
-
-      // Workflow runs
-      match /workflowRuns/{runId} {
-        allow read, write: if isSignedIn() && isOrgMember(orgId);
-      }
+    // CONFIG
+    match /config/{configId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
   }
 }
-

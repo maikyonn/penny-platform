@@ -1,14 +1,12 @@
-import { getUserSubscription } from '$lib/server/subscriptions';
-import { loadUserContext } from '$lib/server/user-context';
-import type { PageServerLoad } from './$types';
+import { getUserSubscription } from "$lib/server/subscriptions";
+import { loadUserContext } from "$lib/server/user-context";
+import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ locals }) => {
-	const { session, profile } = await loadUserContext(locals);
-	let subscription = null;
-
-	if (session) {
-		subscription = await getUserSubscription(locals.supabase, session.user.id);
-	}
+	const { firebaseUser, profile } = await loadUserContext(locals);
+	const subscription = firebaseUser
+		? await getUserSubscription(locals.firestore, firebaseUser.uid)
+		: null;
 
 	return {
 		profile,

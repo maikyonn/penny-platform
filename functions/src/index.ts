@@ -1,13 +1,4 @@
-import { initializeApp } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
-import { onRequest } from "firebase-functions/v2/https";
-import { onSchedule } from "firebase-functions/v2/scheduler";
-import { onMessagePublished } from "firebase-functions/v2/pubsub";
-
-// Initialize Firebase Admin
-initializeApp();
-const db = getFirestore();
+import { adminAuth } from "./firebase.js";
 
 // Export HTTP functions
 export { gmailSend, gmailAuthorize } from "./gmail.js";
@@ -30,7 +21,6 @@ export async function verifyUser(authHeader?: string) {
     throw new Error("Missing or invalid authorization header");
   }
   const idToken = authHeader.split(" ")[1];
-  const decoded = await getAuth().verifyIdToken(idToken);
+  const decoded = await adminAuth.verifyIdToken(idToken);
   return decoded;
 }
-

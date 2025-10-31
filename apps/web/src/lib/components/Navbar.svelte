@@ -1,21 +1,20 @@
 <script lang="ts">
-	import type { Session } from '@supabase/supabase-js';
 	import Logo from './Logo.svelte';
 	import Button from './Button.svelte';
 
 	interface Props {
-		session?: Session | null;
+		firebaseUser?: { email: string | null } | null;
 		profile?: {
 			full_name?: string | null;
 		} | null;
 	}
 
 	let {
-		session = null,
+		firebaseUser = null,
 		profile = null
 	}: Props = $props();
 
-	const displayName = $derived(() => profile?.full_name ?? session?.user.email ?? 'there');
+	const displayName = $derived(() => profile?.full_name ?? firebaseUser?.email ?? 'there');
 </script>
 
 <nav class="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
@@ -35,7 +34,7 @@
 
 			<!-- Auth Buttons -->
 			<div class="flex items-center gap-3">
-		{#if session}
+		{#if firebaseUser}
 			<div class="hidden sm:flex flex-col items-end text-xs text-gray-500">
 				<span class="font-semibold text-gray-800">{displayName()}</span>
 			</div>
