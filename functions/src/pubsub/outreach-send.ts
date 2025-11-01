@@ -3,7 +3,7 @@ import { adminDb } from "../firebase.js";
 
 const db = adminDb;
 
-export const outreachSend = onMessagePublished("outreach-send", async (event) => {
+export const outreachSendTopic = onMessagePublished("outreach-send", async (event) => {
   const message = event.data.message;
   const payload = JSON.parse(message.data.toString());
 

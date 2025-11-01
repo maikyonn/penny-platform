@@ -9,7 +9,19 @@ const path = require('path');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const ENV_DIR = path.join(ROOT_DIR, 'env');
-const PROFILE = process.argv[2] || process.env.PROFILE || 'dev';
+const PROFILE_INPUT = (process.argv[2] || process.env.APP_ENV || process.env.PROFILE || 'development').toLowerCase();
+
+const STAGE_ALIASES = {
+  dev: "development",
+  development: "development",
+  local: "development",
+  test: "development",
+  ci: "development",
+  prod: "production",
+  production: "production",
+};
+
+const STAGE = STAGE_ALIASES[PROFILE_INPUT] || "development";
 
 // Function to parse env file
 function loadEnvFile(filePath) {
@@ -46,20 +58,42 @@ function loadEnvFile(filePath) {
   return env;
 }
 
-// Load base .env
-const baseEnv = loadEnvFile(path.join(ENV_DIR, '.env'));
+const stageEnvCandidates = [
+  path.join(ENV_DIR, `.env.${STAGE}`),
+  path.join(ENV_DIR, `.env.${STAGE}.local`),
+];
 
-// Load profile-specific .env (overrides base)
-const profileEnv = loadEnvFile(path.join(ENV_DIR, `.env.${PROFILE}`));
+let stageEnv = {};
+let loadedPath = null;
 
-// Merge environments (profile overrides base)
-const mergedEnv = { ...baseEnv, ...profileEnv };
+for (const candidate of stageEnvCandidates) {
+  const candidateEnv = loadEnvFile(candidate);
+  if (Object.keys(candidateEnv).length) {
+    stageEnv = candidateEnv;
+    loadedPath = candidate;
+    break;
+  }
+}
 
-// Set PROFILE
-mergedEnv.PROFILE = PROFILE;
+if (!loadedPath) {
+  const examplePath = path.join(ENV_DIR, `.env.${STAGE}.example`);
+  if (fs.existsSync(examplePath)) {
+    console.warn(`ℹ️  No environment file found for stage "${STAGE}". Copy ${path.relative(ROOT_DIR, examplePath)} to env/.env.${STAGE} and populate secrets.`);
+  } else {
+    console.warn(`⚠️  No environment file found for stage "${STAGE}" in ${ENV_DIR}`);
+  }
+}
+
+const mergedEnv = {
+  ...stageEnv,
+};
+
+mergedEnv.PROFILE = STAGE === "production" ? "prod" : "dev";
+mergedEnv.APP_ENV = STAGE;
+mergedEnv.NODE_ENV = STAGE === "production" ? "production" : "development";
 
 // Set Firebase emulator hosts for dev/test
-if (PROFILE === 'dev' || PROFILE === 'test') {
+if (STAGE !== 'production') {
   mergedEnv.FIRESTORE_EMULATOR_HOST = mergedEnv.FIRESTORE_EMULATOR_HOST || 'localhost:9002';
   mergedEnv.FIREBASE_AUTH_EMULATOR_HOST = mergedEnv.FIREBASE_AUTH_EMULATOR_HOST || 'localhost:9001';
   mergedEnv.STORAGE_EMULATOR_HOST = mergedEnv.STORAGE_EMULATOR_HOST || 'localhost:9003';
@@ -74,9 +108,8 @@ Object.keys(mergedEnv).forEach((key) => {
 
 // If run directly, print env vars (for debugging)
 if (require.main === module) {
-  console.log(`Loaded environment for profile: ${PROFILE}`);
+  console.log(`Loaded environment for profile: ${STAGE}`);
   console.log(`Environment variables: ${Object.keys(mergedEnv).length} keys`);
 }
 
 module.exports = mergedEnv;
-

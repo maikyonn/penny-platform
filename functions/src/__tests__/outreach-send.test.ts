@@ -63,9 +63,9 @@ vi.mock("../firebase.js", () => ({
   },
 }));
 
-import { outreachSend } from "../pubsub/outreach-send";
+import { outreachSendTopic } from "../pubsub/outreach-send";
 
-describe("outreachSend handler", () => {
+describe("outreachSendTopic handler", () => {
   it("persists outreach message", async () => {
     const payload = {
       orgId: "org-1",
@@ -77,7 +77,7 @@ describe("outreachSend handler", () => {
       authorId: "user-1",
     };
 
-    await outreachSend({
+    await outreachSendTopic({
       data: {
         message: {
           data: Buffer.from(JSON.stringify(payload)),

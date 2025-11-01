@@ -77,7 +77,8 @@ export const gmailAuthorize = onRequest(
       const { code } = req.body;
 
       if (!code) {
-        return res.status(400).json({ error: "Missing authorization code" });
+        res.status(400).json({ error: "Missing authorization code" });
+        return;
       }
 
       const oauth2Client = new google.auth.OAuth2(
@@ -114,9 +115,11 @@ export const gmailAuthorize = onRequest(
         );
 
       res.json({ success: true });
+      return;
     } catch (error: any) {
       console.error("Gmail authorize error:", error);
       res.status(500).json({ error: error.message });
+      return;
     }
   }
 );
@@ -166,16 +169,19 @@ export const gmailSend = onRequest(
           createdAt: now,
         });
 
-        return res.json({ success: true, messageId: messageRef.id, stubbed: true });
+        res.json({ success: true, messageId: messageRef.id, stubbed: true });
+        return;
       }
 
       // Real Gmail integration would go here
       // Load tokens from Firestore, refresh if needed, send email via Gmail API
 
       res.json({ success: true });
+      return;
     } catch (error: any) {
       console.error("Gmail send error:", error);
       res.status(500).json({ error: error.message });
+      return;
     }
   }
 );

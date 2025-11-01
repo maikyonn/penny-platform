@@ -450,23 +450,24 @@ start_viewer_service() {
 }
 
 start_web_app() {
-    echo -e "${CYAN}🌐 Starting Web App...${NC}"
-    
+    echo -e "${CYAN}🌐 Starting Web App (Vite dev server)...${NC}"
+
     kill_port 9200
-    
-    cd "${ROOT_DIR}/apps/web"
-    
+
+    local web_dir="${ROOT_DIR}/apps/web"
+    cd "${web_dir}"
+
     # Install dependencies if needed
     if [[ ! -d "node_modules" ]]; then
         echo -e "${BLUE}📦 Installing web app dependencies...${NC}"
         npm install
     fi
-    
+
     # Load env vars and start app (SvelteKit will pick up PUBLIC_* vars)
-    nohup bash -c "source ${ROOT_DIR}/scripts/load-env.sh ${PROFILE:-dev} && npm run dev -- --port 9200" \
+    nohup bash -c "source ${ROOT_DIR}/scripts/load-env.sh ${PROFILE:-dev} && npm run dev -- --host --port 9200" \
         > "${LOG_DIR}/web-app.log" 2>&1 &
     local pid=$!
-    
+
     echo -e "${GREEN}✅ Web app starting (PID ${pid})${NC}"
     echo -e "   Logs: ${LOG_DIR}/web-app.log"
     echo -e "   URL: http://localhost:9200"

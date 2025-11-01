@@ -4,16 +4,16 @@ import { adminAuth } from "./firebase.js";
 export { gmailSend, gmailAuthorize } from "./gmail.js";
 export { stripeWebhook } from "./stripe.js";
 export { campaignsCreate, campaignsMatch } from "./campaigns.js";
-export { aiDraftOutreach, chatbotStub, supportAiRouter } from "./ai.js";
+export { aiDraftOutreach, chatbotIntake, supportAiRouter } from "./ai.js";
 export { reportsGenerate } from "./reports.js";
-export { searchStub } from "./search.js";
+export { search } from "./search.js";
 
 // Export scheduled functions
 export { billingMeter } from "./cron/billing-meter.js";
 export { refreshInfluencers } from "./cron/refresh-influencers.js";
 
 // Export Pub/Sub handlers
-export { outreachSend } from "./pubsub/outreach-send.js";
+export { outreachSendTopic } from "./pubsub/outreach-send.js";
 
 // Helper function to verify Firebase ID token
 export async function verifyUser(authHeader?: string) {

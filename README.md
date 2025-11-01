@@ -112,16 +112,72 @@ cd functions && npm test
 
 ## Deployment
 
+### Cloud Functions
+
 ```bash
-# Deploy Firestore rules
-firebase deploy --only firestore:rules
+# deploy a single function
+firebase deploy --only functions:chatbotIntake
 
-# Deploy Functions
+# or deploy every custom function at once
 firebase deploy --only functions
-
-# Deploy everything
-firebase deploy
 ```
+
+Make sure the Cloud Build service account `853331514443@cloudbuild.gserviceaccount.com` has these IAM roles:
+
+- `roles/cloudfunctions.developer`
+- `roles/run.admin`
+- `roles/iam.serviceAccountUser`
+- `roles/artifactregistry.reader`
+- `roles/artifactregistry.writer`
+- `roles/storage.objectViewer`
+- `roles/logging.logWriter`
+
+If deploys complain about Artifact Registry access, grant repository-level bindings:
+
+```bash
+gcloud artifacts repositories add-iam-policy-binding gcf-artifacts \
+  --project penni-platform --location us-central1 \
+  --member=serviceAccount:853331514443-compute@developer.gserviceaccount.com \
+  --role=roles/artifactregistry.reader
+
+gcloud artifacts repositories add-iam-policy-binding gcf-artifacts \
+  --project penni-platform --location us-central1 \
+  --member=serviceAccount:853331514443-compute@developer.gserviceaccount.com \
+  --role=roles/artifactregistry.writer
+```
+
+An artifact cleanup policy keeps container images from accumulating:
+
+```bash
+firebase functions:artifacts:setpolicy --location us-central1 --days 30 --force
+```
+
+### Web Frontend (Firebase App Hosting)
+
+1. Initialize App Hosting (one time):
+
+   ```bash
+   firebase init apphosting
+   ```
+
+   - Link to backend `penni-web-backend`
+   - Root directory: `apps/web`
+   - Install: `npm install`
+   - Build: `npm run build`
+   - Start: `npm run start`
+
+   This writes `apphosting.yaml` for the backend.
+
+2. Deploy the SvelteKit app:
+
+   ```bash
+   cd apps/web
+   npm run build
+   cd ..
+   firebase deploy --only apphosting:penni-web-backend
+   ```
+
+Secrets (Stripe, Gmail, OpenAI, etc.) belong in Google Secret Manager; the deploy automatically grants the build identity access.
 
 ## Documentation
 
@@ -129,4 +185,3 @@ firebase deploy
 - **BrightData Service:** `services/brightdata/README.md`
 - **Functions:** `functions/README.md`
 - **Web App:** `apps/web/README.md`
-

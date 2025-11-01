@@ -66,7 +66,7 @@ export const actions: Actions = {
       return fail(500, { error: "Assistant is unavailable at the moment." });
     }
 
-    const response = await fetch(`${functionsBase}/chatbotStub`, {
+    const response = await fetch(`${functionsBase}/chatbotIntake`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -86,7 +86,12 @@ export const actions: Actions = {
       return fail(500, { error: "Assistant could not respond. Please try again." });
     }
 
-    const payload = await response.json() as { success: boolean; response?: string };
+    const payload = await response.json() as {
+      success: boolean;
+      response?: string;
+      campaignId?: string | null;
+      search?: unknown;
+    };
 
     const now = new Date();
     await locals.firestore
@@ -110,7 +115,8 @@ export const actions: Actions = {
         { role: "user", kind: "bubble", content: message, created_at: now.toISOString() },
         { role: "assistant", kind: "bubble", content: payload.response ?? "Great! I've noted that.", created_at: now.toISOString() },
       ],
-      campaign_id: null,
+      campaign_id: payload.campaignId ?? null,
+      search: payload.search ?? null,
     };
   },
 };

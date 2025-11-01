@@ -4,7 +4,7 @@ import PricingPage from '../../../src/routes/pricing/+page.svelte';
 
 function renderPricing(subscriptionPlan: string | null) {
 	const subscription = subscriptionPlan
-		? { plan: subscriptionPlan, status: 'active', provider: 'stripe' }
+		? { plan: subscriptionPlan, type: subscriptionPlan, status: 'active', provider: 'stripe' }
 		: null;
 
 	render(PricingPage, {

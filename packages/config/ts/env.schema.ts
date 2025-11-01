@@ -8,6 +8,7 @@ export const EnvSchema = z.object({
 
   // Firebase
   FIREBASE_PROJECT_ID: z.string().min(1).optional(),
+  FIREBASE_WEB_API_KEY: z.string().min(1).optional(),
   FIRESTORE_EMULATOR_HOST: z.string().optional(),
   FIREBASE_AUTH_EMULATOR_HOST: z.string().optional(),
   STORAGE_EMULATOR_HOST: z.string().optional(),
@@ -31,6 +32,8 @@ export const EnvSchema = z.object({
   DB_PATH: z.string().optional(),
   TEXT_DB_PATH: z.string().optional(),
   TABLE_NAME: z.string().default("influencer_facets"),
+  LANCEDB_STORAGE_BUCKET: z.string().optional(),
+  LANCEDB_STORAGE_OBJECT: z.string().default("lancedb/lancedb-snapshot.tar.gz"),
 
   // Search API settings
   SEARCH_API_PORT: z.coerce.number().default(7001),
@@ -90,4 +93,3 @@ export const EnvSchema = z.object({
 });
 
 export type Env = z.infer<typeof EnvSchema>;
-

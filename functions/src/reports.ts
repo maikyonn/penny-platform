@@ -12,7 +12,8 @@ export const reportsGenerate = onRequest(async (req, res) => {
     // Verify user is member of org
     const memberDoc = await db.collection("organizations").doc(orgId).collection("members").doc(user.uid).get();
     if (!memberDoc.exists) {
-      return res.status(403).json({ error: "Not a member of this organization" });
+      res.status(403).json({ error: "Not a member of this organization" });
+      return;
     }
 
     // Aggregate metrics
@@ -42,8 +43,10 @@ export const reportsGenerate = onRequest(async (req, res) => {
     });
 
     res.json({ success: true, report: aggregated });
+    return;
   } catch (error: any) {
     console.error("Reports generate error:", error);
     res.status(500).json({ error: error.message });
+    return;
   }
 });

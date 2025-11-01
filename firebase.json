@@ -10,19 +10,12 @@
       ],
       "rewrites": [
         {
-          "source": "/api/**",
-          "function": "api"
-        },
-        {
           "source": "/stripe/**",
           "function": "stripeWebhook"
         },
         {
           "source": "**",
-          "run": {
-            "serviceId": "web-ssr",
-            "region": "us-central1"
-          }
+          "destination": "/index.html"
         }
       ]
     }
@@ -62,5 +55,16 @@
       "codebase": "default",
       "runtime": "nodejs22"
     }
-  ]
+  ],
+  "apphosting": {
+    "backendId": "penni-web-backend",
+    "rootDir": "apps/web",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "firebase-debug.log",
+      "firebase-debug.*.log",
+      "functions"
+    ]
+  }
 }

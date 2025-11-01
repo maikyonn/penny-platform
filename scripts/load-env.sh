@@ -11,10 +11,24 @@ if [[ -z "${ROOT_DIR:-}" ]]; then
     ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fi
 ENV_DIR="${ROOT_DIR}/env"
-PROFILE="${1:-${PROFILE:-dev}}"
+PROFILE_INPUT="${1:-${APP_ENV:-${PROFILE:-development}}}"
+PROFILE_INPUT="${PROFILE_INPUT,,}"
 
-# Export PROFILE so it's available
-export PROFILE="${PROFILE}"
+case "${PROFILE_INPUT}" in
+  dev|development|local|test|ci)
+    STAGE="development"
+    ;;
+  prod|production)
+    STAGE="production"
+    ;;
+  *)
+    STAGE="development"
+    ;;
+esac
+
+export APP_ENV="${STAGE}"
+export PROFILE="$([[ "${STAGE}" == "production" ]] && echo "prod" || echo "dev")"
+export NODE_ENV="$([[ "${STAGE}" == "production" ]] && echo "production" || echo "development")"
 
 # Function to load env file
 load_env_file() {
@@ -44,22 +58,35 @@ load_env_file() {
     fi
 }
 
-# Load base .env file first
-if [[ -f "${ENV_DIR}/.env" ]]; then
-    load_env_file "${ENV_DIR}/.env"
-fi
+# Load stage-specific env file(s)
+STAGE_FILES=(
+    "${ENV_DIR}/.env.${STAGE}"
+    "${ENV_DIR}/.env.${STAGE}.local"
+)
 
-# Load profile-specific .env file (overrides base)
-if [[ -f "${ENV_DIR}/.env.${PROFILE}" ]]; then
-    load_env_file "${ENV_DIR}/.env.${PROFILE}"
+loaded_any=false
+for stage_file in "${STAGE_FILES[@]}"; do
+    if [[ -f "${stage_file}" ]]; then
+        load_env_file "${stage_file}"
+        loaded_any=true
+        break
+    fi
+done
+
+if [[ "${loaded_any}" == false ]]; then
+    example_file="${ENV_DIR}/.env.${STAGE}.example"
+    if [[ -f "${example_file}" ]]; then
+        echo "ℹ️  No environment file found for stage '${STAGE}'. Copy ${example_file##${ROOT_DIR}/} to env/.env.${STAGE} and populate secrets." >&2
+    else
+        echo "⚠️  No environment file found for stage '${STAGE}'." >&2
+    fi
 fi
 
 # Ensure Firebase emulator hosts are set for local development
-if [[ "${PROFILE}" == "dev" ]] || [[ "${PROFILE}" == "test" ]]; then
+if [[ "${STAGE}" != "production" ]]; then
     export FIRESTORE_EMULATOR_HOST="${FIRESTORE_EMULATOR_HOST:-127.0.0.1:9002}"
     export FIREBASE_AUTH_EMULATOR_HOST="${FIREBASE_AUTH_EMULATOR_HOST:-127.0.0.1:9001}"
     export STORAGE_EMULATOR_HOST="${STORAGE_EMULATOR_HOST:-http://127.0.0.1:9003}"
     export PUBSUB_EMULATOR_HOST="${PUBSUB_EMULATOR_HOST:-127.0.0.1:9005}"
     export GOOGLE_CLOUD_PROJECT="${GOOGLE_CLOUD_PROJECT:-demo-penny-dev}"
 fi
-

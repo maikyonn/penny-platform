@@ -13,7 +13,8 @@ export const campaignsCreate = onRequest(async (req, res) => {
     // Verify user is member of org
     const memberDoc = await db.collection("organizations").doc(orgId).collection("members").doc(user.uid).get();
     if (!memberDoc.exists) {
-      return res.status(403).json({ error: "Not a member of this organization" });
+      res.status(403).json({ error: "Not a member of this organization" });
+      return;
     }
 
     const campaignRef = db.collection("organizations").doc(orgId).collection("campaigns").doc();
@@ -35,9 +36,11 @@ export const campaignsCreate = onRequest(async (req, res) => {
     });
 
     res.json({ success: true, campaignId: campaignRef.id });
+    return;
   } catch (error: any) {
     console.error("Campaign create error:", error);
     res.status(500).json({ error: error.message });
+    return;
   }
 });
 
@@ -49,7 +52,8 @@ export const campaignsMatch = onRequest(async (req, res) => {
     // Verify user is member of org
     const memberDoc = await db.collection("organizations").doc(orgId).collection("members").doc(user.uid).get();
     if (!memberDoc.exists) {
-      return res.status(403).json({ error: "Not a member of this organization" });
+      res.status(403).json({ error: "Not a member of this organization" });
+      return;
     }
 
     // This would call the search service
@@ -67,8 +71,10 @@ export const campaignsMatch = onRequest(async (req, res) => {
     const results = await response.json();
 
     res.json({ success: true, results });
+    return;
   } catch (error: any) {
     console.error("Campaign match error:", error);
     res.status(500).json({ error: error.message });
+    return;
   }
 });

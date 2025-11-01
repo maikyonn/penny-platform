@@ -1,6 +1,6 @@
 {
   "projects": {
-    "default": "penny-dev",
+    "default": "penni-platform",
     "dev": "penny-dev",
     "staging": "penny-staging",
     "prod": "penny-prod"
@@ -8,9 +8,10 @@
   "targets": {
     "penny-dev": {
       "hosting": {
-        "penny-web": ["penny-web"]
+        "penny-web": [
+          "penny-web"
+        ]
       }
     }
   }
 }
-

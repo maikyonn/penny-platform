@@ -40,7 +40,8 @@ describe('billing plan helpers', () => {
 
 	it('returns plan config by tier', () => {
 		expect(getPlanConfig('starter')?.tier).toBe('starter');
-		expect(getPlanConfig('enterprise')?.tier).toBe('enterprise');
+		expect(getPlanConfig('pro')?.tier).toBe('pro');
+		expect(getPlanConfig('special_event')?.tier).toBe('special_event');
 	});
 
 	it('returns trial days', () => {

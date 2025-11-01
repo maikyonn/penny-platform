@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     # Firebase
     FIREBASE_PROJECT_ID: Optional[str] = None
+    FIREBASE_WEB_API_KEY: Optional[str] = None
     FIRESTORE_EMULATOR_HOST: Optional[str] = None
     FIREBASE_AUTH_EMULATOR_HOST: Optional[str] = None
     STORAGE_EMULATOR_HOST: Optional[str] = None
@@ -33,6 +34,8 @@ class Settings(BaseSettings):
     DB_PATH: Optional[str] = None
     TEXT_DB_PATH: Optional[str] = None
     TABLE_NAME: str = "influencer_facets"
+    LANCEDB_STORAGE_BUCKET: Optional[str] = None
+    LANCEDB_STORAGE_OBJECT: str = "lancedb/lancedb-snapshot.tar.gz"
 
     # Search API settings
     PORT: int = 9100
@@ -94,11 +97,16 @@ class Settings(BaseSettings):
     # Common
     PENNY_DEFAULT_REGION: str = "us-central1"
 
+    _env_root = Path(__file__).resolve().parents[3] / "env"
+    _profile = os.getenv("PROFILE", "dev")
+
     model_config = SettingsConfigDict(
         env_file=[
             # Layered load from repo root /env directory
-            str(Path(__file__).resolve().parents[3] / "env" / ".env"),
-            str(Path(__file__).resolve().parents[3] / "env" / f".env.{os.getenv('PROFILE', 'dev')}"),
+            str(_env_root / ".env"),
+            str(_env_root / f".env.{_profile}"),
+            str(_env_root / f".env.{_profile}.local"),
+            str(_env_root / f".env.{_profile}.example"),
         ],
         env_file_encoding="utf-8",
         extra="ignore",
@@ -164,4 +172,3 @@ if SETTINGS.STORAGE_EMULATOR_HOST:
     os.environ["STORAGE_EMULATOR_HOST"] = SETTINGS.STORAGE_EMULATOR_HOST
 if SETTINGS.PUBSUB_EMULATOR_HOST:
     os.environ["PUBSUB_EMULATOR_HOST"] = SETTINGS.PUBSUB_EMULATOR_HOST
-

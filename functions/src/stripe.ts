@@ -5,7 +5,7 @@ import { adminDb } from "./firebase.js";
 const db = adminDb;
 let stripeClient: Stripe | null = null;
 
-const stripeApiVersion: Stripe.LatestApiVersion = "2024-12-18.acacia";
+const stripeApiVersion: Stripe.LatestApiVersion = "2025-10-29.clover";
 
 function getStripeClient(): Stripe | null {
   if (stripeClient) {
@@ -44,11 +44,13 @@ export const stripeWebhook = onRequest(
     const stripe = getStripeClient();
 
     if (!stripe) {
-      return res.status(200).json({ received: true, stubbed: true });
+      res.status(200).json({ received: true, stubbed: true });
+      return;
     }
 
     if (!sig) {
-      return res.status(400).send("Missing stripe-signature header");
+      res.status(400).send("Missing stripe-signature header");
+      return;
     }
 
     let event: Stripe.Event;
@@ -63,7 +65,8 @@ export const stripeWebhook = onRequest(
       );
     } catch (err: any) {
       console.error("Webhook signature verification failed:", err.message);
-      return res.status(400).send(`Webhook Error: ${err.message}`);
+      res.status(400).send(`Webhook Error: ${err.message}`);
+      return;
     }
 
     try {
@@ -110,9 +113,10 @@ export const stripeWebhook = onRequest(
               },
               updatedAt: new Date(),
               planUpdatedAt: new Date(),
-              planCurrentPeriodEnd: subscription.current_period_end
-                ? new Date(subscription.current_period_end * 1000)
-                : null,
+              planCurrentPeriodEnd: (() => {
+                const periodEnd = (subscription as Stripe.Subscription & { current_period_end?: number }).current_period_end;
+                return periodEnd ? new Date(periodEnd * 1000) : null;
+              })(),
             }, { merge: true });
           }
           break;
@@ -123,9 +127,11 @@ export const stripeWebhook = onRequest(
       }
 
       res.json({ received: true });
+      return;
     } catch (error: any) {
       console.error("Webhook handler error:", error);
       res.status(500).json({ error: error.message });
+      return;
     }
   }
 );
